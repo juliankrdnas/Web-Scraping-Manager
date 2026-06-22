@@ -26,11 +26,74 @@
 
 .form-grid {
   display: grid;
-  gap: 0.75rem;
+  gap: 1.25rem;
   padding-top: 1rem;
 }
 
 .full-width { width: 100%; }
+
+/* Aumentar altura y legibilidad de los campos del formulario */
+.form-grid mat-form-field {
+
+  /* Necesario para que ::ng-deep alcance los internos de Material */
+  ::ng-deep {
+
+    /* Altura total del recuadro */
+    .mat-mdc-text-field-wrapper {
+      height: 64px !important;
+    }
+
+    /* Centrar verticalmente el contenido dentro del recuadro */
+    .mat-mdc-form-field-flex {
+      height: 64px !important;
+      align-items: center !important;
+    }
+
+    /* El input en sí: tamaño de fuente, padding vertical y espacio para el ícono */
+    .mdc-text-field__input {
+      font-size: 1rem !important;
+      padding-top: 12px !important;
+      padding-bottom: 12px !important;
+      padding-left: 6px !important;
+      height: 64px !important;
+      box-sizing: border-box !important;
+    }
+
+    /* Label flotante en reposo: centrado verticalmente y desplazado para no tapar el ícono */
+    .mdc-floating-label {
+      font-size: 1rem !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      padding-left: 40px !important;
+    }
+
+    /* Label cuando flota hacia arriba (campo con foco o con valor): sin padding extra */
+    .mdc-floating-label--float-above {
+      top: 14px !important;
+      transform: translateY(-100%) scale(0.75) !important;
+      padding-left: 0 !important;
+    }
+
+    /* Ícono prefix: tamaño y alineación */
+    .mat-mdc-form-field-icon-prefix {
+      padding: 0 10px 0 6px !important;
+      display: flex;
+      align-items: center;
+
+      mat-icon {
+        font-size: 22px !important;
+        width: 22px !important;
+        height: 22px !important;
+        color: var(--text-muted);
+      }
+    }
+
+    /* Hint (texto de ayuda debajo del campo) */
+    .mat-mdc-form-field-hint-wrapper {
+      padding-top: 4px !important;
+    }
+  }
+}
 
 .cron-chips {
   display: flex;

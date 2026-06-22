@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 export interface Task {
   _id?: string;
@@ -31,7 +32,7 @@ export interface PaginatedData {
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private baseUrl = 'http://localhost:3000/api';
+  private baseUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) {}
 
@@ -52,12 +53,12 @@ export class ApiService {
     return this.http.put<Task>(`${this.baseUrl}/tasks/${id}`, task);
   }
 
-  deleteTask(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/tasks/${id}`);
+  deleteTask(id: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.baseUrl}/tasks/${id}`);
   }
 
-  runTask(id: string): Observable<{ status: string; value: string }> {
-    return this.http.post<{ status: string; value: string }>(
+  runTask(id: string): Observable<{ status: 'success' | 'error'; values: string[] }> {
+    return this.http.post<{ status: 'success' | 'error'; values: string[] }>(
       `${this.baseUrl}/tasks/${id}/run`,
       {}
     );

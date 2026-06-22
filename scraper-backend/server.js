@@ -14,7 +14,9 @@ const PORT = process.env.PORT || 3000;
 // ─────────────────────────────────────────────
 // Middlewares
 // ─────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || 'http://localhost:4200',
+}));
 app.use(express.json());
 
 // ─────────────────────────────────────────────
@@ -35,14 +37,14 @@ mongoose
 // Crear tarea
 app.post('/api/tasks', async (req, res) => {
   try {
-    const { name, targetUrl, cssSelector, cronSchedule } = req.body;
+    const { name, targetUrl, cssSelector, cronSchedule, isActive } = req.body;
     if (!name || !targetUrl || !cssSelector || !cronSchedule) {
       return res.status(400).json({ error: 'Faltan campos requeridos.' });
     }
     if (!cron.validate(cronSchedule)) {
       return res.status(400).json({ error: 'Expresión cron inválida.' });
     }
-    const newTask = new Task(req.body);
+    const newTask = new Task({ name, targetUrl, cssSelector, cronSchedule, isActive });
     await newTask.save();
     scheduleTask(newTask); // Inyectar en memoria inmediatamente
     res.status(201).json(newTask);
@@ -75,11 +77,20 @@ app.get('/api/tasks/:id', async (req, res) => {
 // Actualizar tarea
 app.put('/api/tasks/:id', async (req, res) => {
   try {
-    const { cronSchedule } = req.body;
-    if (cronSchedule && !cron.validate(cronSchedule)) {
-      return res.status(400).json({ error: 'Expresión cron inválida.' });
+    const { name, targetUrl, cssSelector, cronSchedule, isActive } = req.body;
+    const update = {};
+    if (name !== undefined)         update.name         = name;
+    if (targetUrl !== undefined)    update.targetUrl    = targetUrl;
+    if (cssSelector !== undefined)  update.cssSelector  = cssSelector;
+    if (isActive !== undefined)     update.isActive     = isActive;
+    if (cronSchedule !== undefined) {
+      if (!cron.validate(cronSchedule)) {
+        return res.status(400).json({ error: 'Expresión cron inválida.' });
+      }
+      update.cronSchedule = cronSchedule;
     }
-    const task = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
+
+    const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada.' });
 
     // Reiniciar tarea en memoria si cambió
@@ -151,19 +162,21 @@ const scheduledJobs = new Map(); // taskId → cron.ScheduledTask
  */
 async function runTask(task) {
   console.log(`[Cron] Ejecutando tarea: "${task.name}" (${task._id})`);
-  const value = await extractData(task.targetUrl, task.cssSelector);
-  const status = value !== null ? 'success' : 'error';
+  const values = await extractData(task.targetUrl, task.cssSelector);
+  const status = values.length > 0 ? 'success' : 'error';
 
   await Task.findByIdAndUpdate(task._id, { lastRun: new Date(), lastStatus: status });
 
-  if (value !== null) {
-    await ScrapedData.create({ taskId: task._id, extractedValue: value });
-    console.log(`[Cron] ✓ Dato guardado para "${task.name}": ${value.substring(0, 80)}`);
+  if (values.length > 0) {
+    // Guardar cada valor como un registro independiente
+    const docs = values.map((v) => ({ taskId: task._id, extractedValue: v }));
+    await ScrapedData.insertMany(docs);
+    console.log(`[Cron] ✓ ${values.length} dato(s) guardado(s) para "${task.name}"`);
   } else {
-    console.warn(`[Cron] ✗ Sin dato para "${task.name}"`);
+    console.warn(`[Cron] ✗ Sin datos para "${task.name}"`);
   }
 
-  return { status, value };
+  return { status, values };
 }
 
 /**

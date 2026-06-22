@@ -119,8 +119,11 @@ export class TaskManagerComponent implements OnInit {
     task.lastStatus = 'pending';
     this.api.runTask(task._id!).subscribe({
       next: (res) => {
-        task.lastStatus = res.status as any;
-        this.showSuccess(res.status === 'success' ? `Dato capturado: ${res.value?.substring(0, 60)}` : 'El scraping no devolvió datos.');
+        task.lastStatus = res.status;
+        const preview = res.values?.length
+          ? `${res.values.length} dato(s) capturado(s): ${res.values[0].substring(0, 50)}...`
+          : 'El scraping no devolvió datos.';
+        this.showSuccess(res.status === 'success' ? preview : 'El scraping no devolvió datos.');
         this.loadTasks();
       },
       error: () => this.showError('Error al ejecutar la tarea.'),

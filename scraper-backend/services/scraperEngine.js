@@ -1,10 +1,10 @@
 const puppeteer = require('puppeteer');
 
 /**
- * Extrae texto de un elemento CSS en una URL dada usando Puppeteer.
- * @param {string} url  - URL de la página objetivo.
- * @param {string} selector - Selector CSS del elemento a extraer.
- * @returns {Promise<string|null>} Texto extraído o null si ocurrió un error.
+ * Extrae texto de todos los elementos que coincidan con el selector CSS.
+ * @param {string} url      - URL de la página objetivo.
+ * @param {string} selector - Selector CSS de los elementos a extraer.
+ * @returns {Promise<string[]>} Array de textos extraídos (vacío si hubo error).
  */
 async function extractData(url, selector) {
   const browser = await puppeteer.launch({
@@ -29,15 +29,16 @@ async function extractData(url, selector) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector(selector, { timeout: 8000 });
 
+    // Extraer TODOS los elementos que coincidan con el selector
     const data = await page.evaluate((sel) => {
-      const element = document.querySelector(sel);
-      return element ? element.innerText.trim() : null;
+      const elements = document.querySelectorAll(sel);
+      return Array.from(elements).map((el) => el.innerText.trim()).filter(Boolean);
     }, selector);
 
     return data;
   } catch (error) {
     console.error(`[ScraperEngine] Error al hacer scraping de ${url}:`, error.message);
-    return null;
+    return [];
   } finally {
     await browser.close();
   }
