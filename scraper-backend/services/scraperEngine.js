@@ -26,11 +26,11 @@ async function extractData(url, selector) {
     Object.defineProperty(navigator, 'webdriver', { get: () => false });
   });
 
-  // Bloquear recursos innecesarios para mejorar rendimiento
+  // Bloquear solo recursos que definitivamente no afectan el contenido
   await page.setRequestInterception(true);
   page.on('request', (req) => {
     const type = req.resourceType();
-    if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+    if (['image', 'font', 'media'].includes(type)) {
       req.abort();
     } else {
       req.continue();
@@ -38,8 +38,10 @@ async function extractData(url, selector) {
   });
 
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForSelector(selector, { timeout: 8000 });
+    // networkidle2: espera a que la SPA termine de cargar su contenido dinámico
+    // timeout reducido a 20s para no colgar el servidor indefinidamente
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+    await page.waitForSelector(selector, { timeout: 10000 });
 
     // Extraer TODOS los elementos que coincidan con el selector
     const data = await page.evaluate((sel) => {
