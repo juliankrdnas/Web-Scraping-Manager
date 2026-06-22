@@ -37,9 +37,10 @@
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Selector CSS</mat-label>
+          <mat-label>Selector CSS o Ruta JSON</mat-label>
           <mat-icon matPrefix>code</mat-icon>
-          <input matInput formControlName="cssSelector" placeholder="Ej: .price, #header h1, span.value" id="task-selector" />
+          <input matInput formControlName="cssSelector" placeholder="CSS: .price  |  API: results[].title" id="task-selector" />
+          <mat-hint>Para URLs HTML usá selector CSS. Para APIs (api.*) usá ruta JSON: results[].title</mat-hint>
           <mat-error *ngIf="taskForm.get('cssSelector')?.hasError('required')">El selector es obligatorio.</mat-error>
         </mat-form-field>
 
