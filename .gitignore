@@ -1,0 +1,15 @@
+# ── Backend ──────────────────────────────────────
+scraper-backend/node_modules/
+scraper-backend/.env
+scraper-backend/dist/
+
+# ── Frontend ─────────────────────────────────────
+scraper-frontend/node_modules/
+scraper-frontend/dist/
+scraper-frontend/.angular/
+
+# ── Sistema ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

@@ -1,0 +1,146 @@
+/* ═══════════════════════════════════════════════════════
+   Global Styles — Orquestador de Scraping
+   Dark theme + glassmorphism design system
+═══════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+/* ── Design tokens ── */
+:root {
+  --bg-base:         #0a0a12;
+  --bg-surface:      #111120;
+  --bg-elevated:     #16162a;
+  --surface-glass:   rgba(22, 22, 42, 0.85);
+  --border:          rgba(255, 255, 255, 0.08);
+  --border-strong:   rgba(255, 255, 255, 0.16);
+
+  --text-primary:    #f0f0ff;
+  --text-secondary:  #b0b0d0;
+  --text-muted:      #6b6b8a;
+
+  --accent:          #818cf8;
+  --accent-dark:     #6366f1;
+  --accent-light:    #a5b4fc;
+
+  --success:         #4ade80;
+  --error:           #f87171;
+  --warning:         #facc15;
+
+  --gradient-text:    linear-gradient(135deg, #a5b4fc 0%, #818cf8 50%, #c084fc 100%);
+  --gradient-accent:  linear-gradient(135deg, #6366f1, #8b5cf6);
+  --gradient-surface: linear-gradient(160deg, #111120 0%, #0d0d1e 100%);
+
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  20px;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-base);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(99, 102, 241, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 40% at 90% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 60%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Angular Material dark overrides ── */
+.mat-mdc-card {
+  background: var(--surface-glass) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-card) !important;
+  color: var(--text-primary) !important;
+
+  &.glass-card { box-shadow: var(--shadow-card), var(--shadow-glow) !important; }
+}
+
+.mat-mdc-card-header { padding: 1.25rem 1.5rem 0 !important; }
+.mat-mdc-card-content { padding: 1rem 1.5rem !important; }
+.mat-mdc-card-actions  { padding: 0.5rem 1rem 1rem !important; gap: 4px; }
+.mat-mdc-card-title   { color: var(--text-primary) !important; font-weight: 600 !important; }
+.mat-mdc-card-subtitle { color: var(--text-muted) !important; }
+
+/* Form fields */
+.mat-mdc-form-field {
+  .mdc-text-field--outlined .mdc-notched-outline__leading,
+  .mdc-text-field--outlined .mdc-notched-outline__notch,
+  .mdc-text-field--outlined .mdc-notched-outline__trailing {
+    border-color: var(--border-strong) !important;
+  }
+
+  .mdc-text-field--focused .mdc-notched-outline__leading,
+  .mdc-text-field--focused .mdc-notched-outline__notch,
+  .mdc-text-field--focused .mdc-notched-outline__trailing {
+    border-color: var(--accent) !important;
+  }
+
+  .mat-mdc-form-field-hint { color: var(--text-muted) !important; }
+  input, textarea { color: var(--text-primary) !important; caret-color: var(--accent) !important; }
+}
+
+/* Buttons */
+.mat-mdc-unelevated-button.mat-primary {
+  background: var(--gradient-accent) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  transition: opacity 0.2s, transform 0.15s !important;
+  &:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+}
+
+.mat-mdc-outlined-button { border-color: var(--border-strong) !important; color: var(--text-secondary) !important; border-radius: var(--radius-sm) !important; }
+
+/* Toolbar */
+.mat-toolbar { background: transparent !important; }
+
+/* Snackbar */
+.snack-success .mdc-snackbar__surface { background: #14532d !important; border: 1px solid #4ade80 !important; }
+.snack-error   .mdc-snackbar__surface { background: #450a0a !important; border: 1px solid #f87171 !important; }
+.mat-mdc-snack-bar-label { color: var(--text-primary) !important; }
+
+/* Slide toggle */
+.mat-mdc-slide-toggle .mdc-label { color: var(--text-secondary) !important; }
+
+/* Select / options */
+.mat-mdc-select-value { color: var(--text-primary) !important; }
+.mat-mdc-option       { color: var(--text-primary) !important; }
+.mat-mdc-select-panel { background: var(--bg-elevated) !important; border: 1px solid var(--border) !important; }
+
+/* Table */
+.mat-mdc-header-row { background: rgba(255,255,255,0.03) !important; }
+
+/* Paginator */
+.mat-mdc-paginator { color: var(--text-muted) !important; background: transparent !important; }
+.mat-mdc-paginator-range-label { color: var(--text-muted) !important; }
+
+/* Chips */
+.mat-mdc-chip { border-radius: 8px !important; }
+
+/* Icon colour default */
+.mat-icon { color: currentColor; }
+
+/* Router active link highlight */
+.nav-active {
+  color: var(--accent) !important;
+  background: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }

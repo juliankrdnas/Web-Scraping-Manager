@@ -1,0 +1,113 @@
+<div class="page-header">
+  <div class="page-header__text">
+    <h1>Visor de Datos</h1>
+    <p>Consulta los resultados capturados por tus bots</p>
+  </div>
+  <button mat-flat-button color="primary" routerLink="/tasks" class="header-btn">
+    <mat-icon>settings</mat-icon> Gestionar Tareas
+  </button>
+</div>
+
+<!-- ── Selector de tarea ──────────────────────────── -->
+<mat-card class="selector-card glass-card">
+  <mat-card-content>
+    <mat-form-field appearance="outline" class="task-select">
+      <mat-label>Seleccionar Tarea</mat-label>
+      <mat-icon matPrefix>task_alt</mat-icon>
+      <mat-select id="select-task" [(ngModel)]="selectedTaskId" (ngModelChange)="onTaskChange()">
+        <mat-option *ngFor="let task of tasks" [value]="task._id">
+          <span class="option-label">
+            <span class="option-dot" [class]="task.isActive ? 'dot-active' : 'dot-inactive'"></span>
+            {{ task.name }}
+          </span>
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <div *ngIf="selectedTaskId" class="task-stats">
+      <mat-chip class="stat-chip">
+        <mat-icon>storage</mat-icon>{{ totalRecords }} registros
+      </mat-chip>
+      <button mat-stroked-button (click)="loadData()" id="btn-refresh" matTooltip="Actualizar">
+        <mat-icon>refresh</mat-icon>
+      </button>
+    </div>
+  </mat-card-content>
+</mat-card>
+
+<!-- ── Tabla de datos ─────────────────────────────── -->
+<mat-card class="table-card glass-card" *ngIf="selectedTaskId">
+  <mat-card-header>
+    <mat-card-title>
+      <mat-icon>bar_chart</mat-icon> {{ selectedTaskName() }}
+    </mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    <div *ngIf="isLoading" class="loading-center">
+      <mat-progress-spinner mode="indeterminate" diameter="48"></mat-progress-spinner>
+    </div>
+
+    <div *ngIf="!isLoading && data.length === 0" class="empty-state">
+      <mat-icon>search_off</mat-icon>
+      <p>No hay datos para esta tarea todavía. Ejecútala manualmente o espera la próxima corrida.</p>
+    </div>
+
+    <div *ngIf="!isLoading && data.length > 0" class="table-wrapper">
+      <table mat-table [dataSource]="data" class="data-table" id="scraped-data-table">
+
+        <!-- # -->
+        <ng-container matColumnDef="index">
+          <th mat-header-cell *matHeaderCellDef>#</th>
+          <td mat-cell *matCellDef="let row; let i = index">
+            {{ currentPage * pageSize + i + 1 }}
+          </td>
+        </ng-container>
+
+        <!-- Valor extraído -->
+        <ng-container matColumnDef="extractedValue">
+          <th mat-header-cell *matHeaderCellDef>Valor Extraído</th>
+          <td mat-cell *matCellDef="let row" class="value-cell">
+            <span class="value-text">{{ row.extractedValue }}</span>
+            <button mat-icon-button class="copy-btn" (click)="copyValue(row.extractedValue)"
+                    matTooltip="Copiar" [id]="'btn-copy-' + row._id">
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <!-- Timestamp -->
+        <ng-container matColumnDef="timestamp">
+          <th mat-header-cell *matHeaderCellDef>Fecha y Hora</th>
+          <td mat-cell *matCellDef="let row" class="timestamp-cell">
+            <mat-icon>access_time</mat-icon>
+            {{ row.timestamp | date:'dd/MM/yyyy HH:mm:ss' }}
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="data-row"></tr>
+      </table>
+
+      <mat-paginator
+        [length]="totalRecords"
+        [pageSize]="pageSize"
+        [pageSizeOptions]="[10, 20, 50, 100]"
+        [pageIndex]="currentPage"
+        (page)="onPageChange($event)"
+        id="data-paginator"
+        showFirstLastButtons>
+      </mat-paginator>
+    </div>
+  </mat-card-content>
+</mat-card>
+
+<!-- Estado vacío inicial -->
+<div *ngIf="!selectedTaskId && !isLoadingTasks" class="initial-empty">
+  <mat-icon>radar</mat-icon>
+  <h2>Selecciona una tarea para ver sus datos</h2>
+  <p>Los resultados de cada bot de scraping aparecerán aquí de forma cronológica.</p>
+  <button mat-flat-button color="primary" routerLink="/tasks" id="btn-go-tasks">
+    <mat-icon>add</mat-icon> Crear mi primera tarea
+  </button>
+</div>

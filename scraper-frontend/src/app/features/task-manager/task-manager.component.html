@@ -1,0 +1,151 @@
+<div class="page-header">
+  <div class="page-header__text">
+    <h1>Gestor de Tareas</h1>
+    <p>Crea, edita y controla tus bots de scraping</p>
+  </div>
+  <button mat-flat-button color="primary" routerLink="/data" class="header-btn">
+    <mat-icon>bar_chart</mat-icon> Ver Datos
+  </button>
+</div>
+
+<!-- ── Formulario ─────────────────────────────────── -->
+<mat-card class="form-card glass-card">
+  <mat-card-header>
+    <mat-card-title>
+      <mat-icon>{{ editingTaskId ? 'edit' : 'add_circle' }}</mat-icon>
+      {{ editingTaskId ? 'Editar Tarea' : 'Nueva Tarea' }}
+    </mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    <form [formGroup]="taskForm" (ngSubmit)="onSubmit()" id="task-form">
+      <div class="form-grid">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Nombre de la tarea</mat-label>
+          <mat-icon matPrefix>label</mat-icon>
+          <input matInput formControlName="name" placeholder="Ej: Precio Bitcoin en CoinGecko" id="task-name" />
+          <mat-error *ngIf="taskForm.get('name')?.hasError('required')">El nombre es obligatorio.</mat-error>
+          <mat-error *ngIf="taskForm.get('name')?.hasError('minlength')">Mínimo 3 caracteres.</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>URL Objetivo</mat-label>
+          <mat-icon matPrefix>link</mat-icon>
+          <input matInput formControlName="targetUrl" placeholder="https://ejemplo.com/pagina" id="task-url" />
+          <mat-error *ngIf="taskForm.get('targetUrl')?.hasError('required')">La URL es obligatoria.</mat-error>
+          <mat-error *ngIf="taskForm.get('targetUrl')?.hasError('pattern')">Debe ser una URL válida (http/https).</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Selector CSS</mat-label>
+          <mat-icon matPrefix>code</mat-icon>
+          <input matInput formControlName="cssSelector" placeholder="Ej: .price, #header h1, span.value" id="task-selector" />
+          <mat-error *ngIf="taskForm.get('cssSelector')?.hasError('required')">El selector es obligatorio.</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Programación Cron</mat-label>
+          <mat-icon matPrefix>schedule</mat-icon>
+          <input matInput formControlName="cronSchedule" placeholder="* * * * *" id="task-cron" />
+          <mat-hint>Formato: minuto hora día mes día-semana</mat-hint>
+          <mat-error *ngIf="taskForm.get('cronSchedule')?.hasError('required')">La expresión cron es obligatoria.</mat-error>
+        </mat-form-field>
+
+        <!-- Atajos cron -->
+        <div class="cron-chips">
+          <span class="chips-label">Atajos:</span>
+          <mat-chip-set>
+            <mat-chip *ngFor="let ex of cronExamples" (click)="applyCronExample(ex.value)" class="cron-chip">
+              {{ ex.label }}
+            </mat-chip>
+          </mat-chip-set>
+        </div>
+
+        <div class="toggle-row">
+          <mat-slide-toggle formControlName="isActive" id="task-active" color="accent">
+            Activa
+          </mat-slide-toggle>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button mat-stroked-button type="button" (click)="resetForm()" *ngIf="editingTaskId" id="btn-cancel">
+          <mat-icon>close</mat-icon> Cancelar
+        </button>
+        <button mat-flat-button color="primary" type="submit" [disabled]="taskForm.invalid || isSaving" id="btn-save">
+          <mat-progress-spinner *ngIf="isSaving" diameter="18" mode="indeterminate"></mat-progress-spinner>
+          <mat-icon *ngIf="!isSaving">{{ editingTaskId ? 'save' : 'add' }}</mat-icon>
+          {{ editingTaskId ? 'Guardar Cambios' : 'Crear Tarea' }}
+        </button>
+      </div>
+    </form>
+  </mat-card-content>
+</mat-card>
+
+<!-- ── Lista de Tareas ──────────────────────────────── -->
+<div class="tasks-section">
+  <h2 class="section-title">Tareas Registradas</h2>
+
+  <div *ngIf="isLoading" class="loading-center">
+    <mat-progress-spinner mode="indeterminate" diameter="48"></mat-progress-spinner>
+  </div>
+
+  <div *ngIf="!isLoading && tasks.length === 0" class="empty-state">
+    <mat-icon>sentiment_neutral</mat-icon>
+    <p>No hay tareas registradas aún. ¡Crea la primera!</p>
+  </div>
+
+  <div class="tasks-grid">
+    <mat-card *ngFor="let task of tasks" class="task-card glass-card" [class.inactive]="!task.isActive">
+      <mat-card-header>
+        <div class="task-header-left">
+          <span class="status-dot" [class]="statusColor(task.lastStatus)">
+            <mat-icon>{{ statusIcon(task.lastStatus) }}</mat-icon>
+          </span>
+          <div>
+            <mat-card-title>{{ task.name }}</mat-card-title>
+            <mat-card-subtitle>{{ task.targetUrl }}</mat-card-subtitle>
+          </div>
+        </div>
+        <mat-chip class="cron-badge" [class.inactive-badge]="!task.isActive">
+          <mat-icon>schedule</mat-icon> {{ task.cronSchedule }}
+        </mat-chip>
+      </mat-card-header>
+
+      <mat-card-content>
+        <div class="task-meta">
+          <span class="meta-item"><mat-icon>code</mat-icon>{{ task.cssSelector }}</span>
+          <span class="meta-item" *ngIf="task.lastRun">
+            <mat-icon>update</mat-icon>Última ejecución: {{ task.lastRun | date:'dd/MM/yy HH:mm' }}
+          </span>
+          <span class="meta-item" *ngIf="!task.lastRun">
+            <mat-icon>radio_button_unchecked</mat-icon>Sin ejecuciones aún
+          </span>
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions>
+        <button mat-icon-button color="primary" (click)="runNow(task)" [id]="'btn-run-' + task._id"
+                matTooltip="Ejecutar ahora">
+          <mat-icon>play_arrow</mat-icon>
+        </button>
+        <button mat-icon-button color="accent" (click)="editTask(task)" [id]="'btn-edit-' + task._id"
+                matTooltip="Editar">
+          <mat-icon>edit</mat-icon>
+        </button>
+        <button mat-icon-button (click)="toggleActive(task)" [id]="'btn-toggle-' + task._id"
+                [matTooltip]="task.isActive ? 'Desactivar' : 'Activar'">
+          <mat-icon>{{ task.isActive ? 'pause_circle' : 'play_circle' }}</mat-icon>
+        </button>
+        <button mat-icon-button color="warn" (click)="deleteTask(task)" [id]="'btn-delete-' + task._id"
+                matTooltip="Eliminar">
+          <mat-icon>delete</mat-icon>
+        </button>
+        <button mat-stroked-button routerLink="/data" [queryParams]="{ taskId: task._id }"
+                [id]="'btn-view-' + task._id" class="view-data-btn">
+          <mat-icon>bar_chart</mat-icon> Ver datos
+        </button>
+      </mat-card-actions>
+    </mat-card>
+  </div>
+</div>

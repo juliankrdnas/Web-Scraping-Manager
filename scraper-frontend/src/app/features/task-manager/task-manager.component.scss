@@ -1,0 +1,178 @@
+/* ═══════════════════════════════════════════════════
+   Task Manager — Estilos
+═══════════════════════════════════════════════════ */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+
+  &__text {
+    h1 { margin: 0; font-size: 2rem; font-weight: 700; background: var(--gradient-text); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    p  { margin: 0.25rem 0 0; color: var(--text-muted); }
+  }
+}
+
+.header-btn { border-radius: 10px !important; gap: 6px; }
+
+/* ── Formulario ── */
+.form-card {
+  margin-bottom: 2.5rem;
+  mat-card-title { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; }
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+}
+
+.full-width { width: 100%; }
+
+.cron-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+
+  .chips-label { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+
+  .cron-chip {
+    cursor: pointer !important;
+    font-size: 0.75rem !important;
+    height: 28px !important;
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: var(--accent) !important;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    transition: all 0.2s;
+
+    &:hover { background: rgba(99, 102, 241, 0.25) !important; transform: translateY(-1px); }
+  }
+}
+
+.toggle-row { display: flex; align-items: center; padding: 0.25rem 0; }
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+
+  button { border-radius: 10px !important; display: flex; align-items: center; gap: 6px; }
+
+  mat-progress-spinner { display: inline-block; margin-right: 4px; }
+}
+
+/* ── Lista de Tareas ── */
+.tasks-section { margin-top: 1rem; }
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 4px; height: 20px;
+    background: var(--gradient-accent);
+    border-radius: 4px;
+  }
+}
+
+.tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.25rem;
+}
+
+.task-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+
+  &:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.4) !important; }
+
+  &.inactive { opacity: 0.55; }
+
+  mat-card-header { align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+}
+
+.task-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+
+  mat-card-title  { font-size: 1rem; margin-bottom: 2px; }
+  mat-card-subtitle { font-size: 0.78rem; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+.status-dot {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+
+  mat-icon { font-size: 20px; width: 20px; height: 20px; }
+
+  &.status-success mat-icon { color: #4ade80; }
+  &.status-error   mat-icon { color: #f87171; }
+  &.status-pending mat-icon { color: #facc15; animation: pulse 1s infinite; }
+  &.status-never   mat-icon { color: var(--text-muted); }
+}
+
+.cron-badge {
+  font-size: 0.7rem !important;
+  height: 26px !important;
+  background: rgba(99, 102, 241, 0.15) !important;
+  color: var(--accent) !important;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  mat-icon { font-size: 14px; width: 14px; height: 14px; margin-right: 4px; }
+
+  &.inactive-badge { background: rgba(255,255,255,0.05) !important; color: var(--text-muted) !important; }
+}
+
+.task-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  mat-icon { font-size: 15px; width: 15px; height: 15px; }
+}
+
+.view-data-btn {
+  margin-left: auto !important;
+  border-radius: 8px !important;
+  font-size: 0.8rem !important;
+  height: 32px !important;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Estados vacíos / loading ── */
+.loading-center, .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-muted);
+  gap: 0.75rem;
+  text-align: center;
+  mat-icon { font-size: 48px; width: 48px; height: 48px; opacity: 0.4; }
+}
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
