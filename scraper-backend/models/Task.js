@@ -2,22 +2,19 @@ const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true },
-    targetUrl: { type: String, required: true, trim: true },
-    cssSelector: { type: String, required: true, trim: true },
-    cronSchedule: {
-      type: String,
-      required: true,
-      trim: true,
-      // Ej: '0 * * * *' para cada hora, '*/5 * * * *' para cada 5 min
-    },
-    isActive: { type: Boolean, default: true },
-    lastRun: { type: Date, default: null },
-    lastStatus: {
-      type: String,
-      enum: ['success', 'error', 'pending', 'never'],
-      default: 'never',
-    },
+    name:         { type: String, required: true, trim: true },
+    targetUrl:    { type: String, required: true, trim: true }, // Soporta el comodín {{PAGE_PARAM}}
+    cssSelector:  { type: String, required: true, trim: true },
+    cronSchedule: { type: String, required: true, trim: true },
+    isActive:     { type: Boolean, default: true },
+    lastRun:      { type: Date, default: null },
+    lastStatus:   { type: String, enum: ['success', 'error', 'pending', 'never'], default: 'never' },
+
+    // ── Paginación dinámica ──────────────────────────────────
+    isPaginated:     { type: Boolean, default: false },
+    paginationStart: { type: Number, default: 1 },   // 1 (páginas normales) ó 0 (offsets)
+    paginationStep:  { type: Number, default: 1 },   // 1 (?page=2), 50 (offset ML), etc.
+    maxPages:        { type: Number, default: 1 },   // Límite de seguridad (máx 10)
   },
   { timestamps: true }
 );

@@ -67,6 +67,50 @@
             Activa
           </mat-slide-toggle>
         </div>
+
+        <!-- ── Paginación dinámica ── -->
+        <div class="full-width pagination-toggle">
+          <mat-slide-toggle formControlName="isPaginated" color="primary" id="task-paginated">
+            Habilitar Paginación Dinámica
+          </mat-slide-toggle>
+        </div>
+
+        <ng-container *ngIf="taskForm.get('isPaginated')?.value">
+          <div class="pagination-hint">
+            <mat-icon>info</mat-icon>
+            <span>
+              Incluí el texto <code>{{ pageParamToken }}</code> en la URL Objetivo.
+              El sistema lo reemplazará con el valor calculado en cada página.
+              Ej: <code>https://sitio.com/productos?page={{ pageParamToken }}</code>
+            </span>
+          </div>
+
+          <div class="pagination-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>Valor Inicial</mat-label>
+              <mat-icon matPrefix>start</mat-icon>
+              <input matInput type="number" formControlName="paginationStart" id="task-pag-start" />
+              <mat-hint>1 (páginas) ó 0 (offsets)</mat-hint>
+              <mat-error>Mínimo 0.</mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Salto (Step)</mat-label>
+              <mat-icon matPrefix>redo</mat-icon>
+              <input matInput type="number" formControlName="paginationStep" id="task-pag-step" />
+              <mat-hint>1 (?page=2), 50 (offset)</mat-hint>
+              <mat-error>Mínimo 1.</mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Páginas Máximas</mat-label>
+              <mat-icon matPrefix>last_page</mat-icon>
+              <input matInput type="number" formControlName="maxPages" id="task-pag-max" />
+              <mat-hint>Límite de seguridad (máx 10)</mat-hint>
+              <mat-error>Entre 1 y 10.</mat-error>
+            </mat-form-field>
+          </div>
+        </ng-container>
       </div>
 
       <div class="form-actions">

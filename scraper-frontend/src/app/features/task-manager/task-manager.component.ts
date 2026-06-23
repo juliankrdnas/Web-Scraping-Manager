@@ -43,6 +43,8 @@ export class TaskManagerComponent implements OnInit {
   isSaving = false;
   editingTaskId: string | null = null;
 
+  readonly pageParamToken = '{{PAGE_PARAM}}';
+
   cronExamples = [
     { label: 'Cada minuto', value: '* * * * *' },
     { label: 'Cada hora', value: '0 * * * *' },
@@ -59,11 +61,16 @@ export class TaskManagerComponent implements OnInit {
 
   buildForm(): void {
     this.taskForm = this.fb.group({
-      name: ['', [Validators.required, Validators.minLength(3)]],
-      targetUrl: ['', [Validators.required, Validators.pattern('https?://.+')]],
-      cssSelector: ['', Validators.required],
-      cronSchedule: ['0 * * * *', Validators.required],
-      isActive: [true],
+      name:            ['', [Validators.required, Validators.minLength(3)]],
+      targetUrl:       ['', [Validators.required, Validators.pattern('https?://.+')]],
+      cssSelector:     ['', Validators.required],
+      cronSchedule:    ['0 * * * *', Validators.required],
+      isActive:        [true],
+      // Paginación dinámica
+      isPaginated:     [false],
+      paginationStart: [1, [Validators.required, Validators.min(0)]],
+      paginationStep:  [1, [Validators.required, Validators.min(1)]],
+      maxPages:        [1, [Validators.required, Validators.min(1), Validators.max(10)]],
     });
   }
 
@@ -139,7 +146,14 @@ export class TaskManagerComponent implements OnInit {
 
   resetForm(): void {
     this.editingTaskId = null;
-    this.taskForm.reset({ cronSchedule: '0 * * * *', isActive: true });
+    this.taskForm.reset({
+      cronSchedule: '0 * * * *',
+      isActive: true,
+      isPaginated: false,
+      paginationStart: 1,
+      paginationStep: 1,
+      maxPages: 1,
+    });
   }
 
   statusColor(status?: string): string {

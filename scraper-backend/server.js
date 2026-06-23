@@ -37,16 +37,23 @@ mongoose
 // Crear tarea
 app.post('/api/tasks', async (req, res) => {
   try {
-    const { name, targetUrl, cssSelector, cronSchedule, isActive } = req.body;
+    const {
+      name, targetUrl, cssSelector, cronSchedule, isActive,
+      isPaginated, paginationStart, paginationStep, maxPages,
+    } = req.body;
     if (!name || !targetUrl || !cssSelector || !cronSchedule) {
       return res.status(400).json({ error: 'Faltan campos requeridos.' });
     }
     if (!cron.validate(cronSchedule)) {
       return res.status(400).json({ error: 'Expresión cron inválida.' });
     }
-    const newTask = new Task({ name, targetUrl, cssSelector, cronSchedule, isActive });
+    const newTask = new Task({
+      name, targetUrl, cssSelector, cronSchedule, isActive,
+      isPaginated, paginationStart, paginationStep,
+      maxPages: Math.min(maxPages ?? 1, 10), // nunca más de 10 páginas
+    });
     await newTask.save();
-    scheduleTask(newTask); // Inyectar en memoria inmediatamente
+    scheduleTask(newTask);
     res.status(201).json(newTask);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -77,12 +84,19 @@ app.get('/api/tasks/:id', async (req, res) => {
 // Actualizar tarea
 app.put('/api/tasks/:id', async (req, res) => {
   try {
-    const { name, targetUrl, cssSelector, cronSchedule, isActive } = req.body;
+    const {
+      name, targetUrl, cssSelector, cronSchedule, isActive,
+      isPaginated, paginationStart, paginationStep, maxPages,
+    } = req.body;
     const update = {};
-    if (name !== undefined)         update.name         = name;
-    if (targetUrl !== undefined)    update.targetUrl    = targetUrl;
-    if (cssSelector !== undefined)  update.cssSelector  = cssSelector;
-    if (isActive !== undefined)     update.isActive     = isActive;
+    if (name !== undefined)            update.name            = name;
+    if (targetUrl !== undefined)       update.targetUrl       = targetUrl;
+    if (cssSelector !== undefined)     update.cssSelector     = cssSelector;
+    if (isActive !== undefined)        update.isActive        = isActive;
+    if (isPaginated !== undefined)     update.isPaginated     = isPaginated;
+    if (paginationStart !== undefined) update.paginationStart = paginationStart;
+    if (paginationStep !== undefined)  update.paginationStep  = paginationStep;
+    if (maxPages !== undefined)        update.maxPages        = Math.min(maxPages, 10);
     if (cronSchedule !== undefined) {
       if (!cron.validate(cronSchedule)) {
         return res.status(400).json({ error: 'Expresión cron inválida.' });
@@ -93,7 +107,6 @@ app.put('/api/tasks/:id', async (req, res) => {
     const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada.' });
 
-    // Reiniciar tarea en memoria si cambió
     removeScheduledTask(task._id.toString());
     if (task.isActive) scheduleTask(task);
 
@@ -162,7 +175,8 @@ const scheduledJobs = new Map(); // taskId → cron.ScheduledTask
  */
 async function runTask(task) {
   console.log(`[Cron] Ejecutando tarea: "${task.name}" (${task._id})`);
-  const values = await extractData(task.targetUrl, task.cssSelector);
+  // Pasa el objeto task completo — el motor decide modo (API/HTML) y paginación internamente
+  const values = await extractData(task);
   const status = values.length > 0 ? 'success' : 'error';
 
   await Task.findByIdAndUpdate(task._id, { lastRun: new Date(), lastStatus: status });

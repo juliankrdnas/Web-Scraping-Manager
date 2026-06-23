@@ -118,6 +118,53 @@
 
 .toggle-row { display: flex; align-items: center; padding: 0.25rem 0; }
 
+/* ── Paginación ── */
+.pagination-toggle {
+  padding: 0.25rem 0;
+}
+
+.pagination-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+
+  mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+  code { background: rgba(99, 102, 241, 0.15); padding: 1px 5px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.8rem; color: var(--accent-light); }
+}
+
+.pagination-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+
+  @media (max-width: 600px) { grid-template-columns: 1fr; }
+
+  ::ng-deep {
+    .mat-mdc-text-field-wrapper { height: 64px !important; }
+    .mat-mdc-form-field-flex { height: 64px !important; align-items: center !important; }
+    .mdc-text-field__input {
+      font-size: 1rem !important;
+      padding-top: 12px !important;
+      padding-bottom: 12px !important;
+      padding-left: 6px !important;
+      height: 64px !important;
+      box-sizing: border-box !important;
+    }
+    .mdc-floating-label { font-size: 1rem !important; top: 50% !important; transform: translateY(-50%) !important; padding-left: 40px !important; }
+    .mdc-floating-label--float-above { top: 14px !important; transform: translateY(-100%) scale(0.75) !important; padding-left: 0 !important; }
+    .mat-mdc-form-field-icon-prefix { padding: 0 10px 0 6px !important; display: flex; align-items: center;
+      mat-icon { font-size: 22px !important; width: 22px !important; height: 22px !important; color: var(--text-muted); }
+    }
+  }
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;

@@ -14,6 +14,11 @@ export interface Task {
   lastStatus?: 'success' | 'error' | 'pending' | 'never';
   createdAt?: string;
   updatedAt?: string;
+  // Paginación dinámica
+  isPaginated?: boolean;
+  paginationStart?: number;
+  paginationStep?: number;
+  maxPages?: number;
 }
 
 export interface ScrapedData {

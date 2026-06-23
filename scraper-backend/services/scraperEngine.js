@@ -1,77 +1,74 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 
-/**
- * Determina si una URL apunta a una API que devuelve JSON.
- * Reconoce: api.mercadolibre.com, api.mercadopago.com, y cualquier URL
- * que contenga /api/ o que el usuario haya marcado explícitamente.
- */
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+/** Detecta si la URL apunta a una API JSON (hostname comienza con "api.") */
 function isJsonApi(url) {
   try {
-    const { hostname } = new URL(url);
-    return hostname.startsWith('api.');
+    return new URL(url).hostname.startsWith('api.');
   } catch {
     return false;
   }
 }
 
 /**
- * Navega un objeto JSON anidado usando una ruta con notación de punto y corchetes.
- * Soporta:
- *   - Propiedad simple:          "title"
- *   - Ruta anidada:              "results.title"
- *   - Array con índice:          "results[0].title"
- *   - Array completo (flatten):  "results[].title"
- *
- * @param {any}    obj   - Objeto JSON raíz.
- * @param {string} path  - Ruta a extraer, ej: "results[].title"
- * @returns {string[]}   - Array de strings con los valores encontrados.
+ * Navega un objeto JSON usando notación de punto y corchetes.
+ * Soporta: "title", "results.title", "results[0].title", "results[].title"
  */
 function extractByPath(obj, path) {
   const parts = path
-    .replace(/\[(\d*)\]/g, '.$1')   // results[0] → results.0  |  results[] → results.
+    .replace(/\[(\d*)\]/g, '.$1')
     .split('.')
     .filter(Boolean);
 
   function dig(current, remaining) {
     if (remaining.length === 0) {
-      if (current === null || current === undefined) return [];
+      if (current == null) return [];
       return [String(current).trim()].filter(Boolean);
     }
-
     const [head, ...tail] = remaining;
-
     if (Array.isArray(current)) {
-      // Si el segmento es un índice numérico accede directamente; si no, mapea todo el array
       const idx = parseInt(head, 10);
       if (!isNaN(idx)) return dig(current[idx], tail);
-      return current.flatMap((item) => dig(item[head], tail));
+      return current.flatMap((item) => dig(item?.[head], tail));
     }
-
-    if (current && typeof current === 'object') {
-      return dig(current[head], tail);
-    }
-
+    if (current && typeof current === 'object') return dig(current[head], tail);
     return [];
   }
 
   return dig(obj, parts);
 }
 
+/**
+ * Simula scroll humano para forzar la carga de contenido lazy-loaded.
+ */
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      const distance = 100;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 100);
+    });
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
-// Modo JSON API — fetch simple, sin Puppeteer
+// Modo JSON API — fetch sin Puppeteer
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Llama a una URL de API REST, parsea el JSON y extrae valores
- * usando la ruta indicada en jsonPath.
- *
- * @param {string} url      - URL de la API (ej: https://api.mercadolibre.com/sites/MCO/search?q=tvs+raider)
- * @param {string} jsonPath - Ruta JSON (ej: results[].title)
- * @returns {Promise<string[]>}
- */
 async function extractFromApi(url, jsonPath) {
   console.log(`[ScraperEngine] Modo API → GET ${url}`);
-  console.log(`[ScraperEngine] Ruta JSON: "${jsonPath}"`);
 
   const response = await fetch(url, {
     headers: {
@@ -80,25 +77,19 @@ async function extractFromApi(url, jsonPath) {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} ${response.statusText}`);
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
 
   const json = await response.json();
   const values = extractByPath(json, jsonPath);
-
   console.log(`[ScraperEngine] API extrajo ${values.length} valor(es)`);
   return values;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Modo HTML — Puppeteer con selector CSS
+// Modo HTML — Puppeteer + Stealth + Paginación
 // ─────────────────────────────────────────────────────────────
 
-async function extractFromHtml(url, selector) {
-  console.log(`[ScraperEngine] Modo HTML → ${url}`);
-  console.log(`[ScraperEngine] Selector CSS: "${selector}"`);
-
+async function extractFromHtml(task) {
   const browser = await puppeteer.launch({
     headless: 'new',
     args: [
@@ -112,56 +103,79 @@ async function extractFromHtml(url, selector) {
 
   const page = await browser.newPage();
 
-  await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-  );
-  await page.evaluateOnNewDocument(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-  });
-
   await page.setRequestInterception(true);
   page.on('request', (req) => {
-    const type = req.resourceType();
-    if (['image', 'font', 'media'].includes(type)) {
+    if (['image', 'font', 'media'].includes(req.resourceType())) {
       req.abort();
     } else {
       req.continue();
     }
   });
 
+  const allData = [];
+  const pagesToScrape = task.isPaginated ? Math.min(task.maxPages, 10) : 1;
+
   try {
-    try {
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 25000 });
-      console.log(`[ScraperEngine] Página cargada (networkidle2)`);
-    } catch {
-      console.warn(`[ScraperEngine] networkidle2 falló, reintentando con domcontentloaded...`);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-      console.log(`[ScraperEngine] Página cargada (domcontentloaded fallback)`);
+    for (let i = 0; i < pagesToScrape; i++) {
+      // Calcular URL de la página actual reemplazando el comodín
+      let currentUrl = task.targetUrl;
+      if (task.isPaginated) {
+        const paramValue = task.paginationStart + i * task.paginationStep;
+        currentUrl = task.targetUrl.replace('{{PAGE_PARAM}}', String(paramValue));
+      }
+
+      console.log(`[ScraperEngine] Página ${i + 1}/${pagesToScrape} → ${currentUrl}`);
+
+      try {
+        await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 25000 });
+      } catch {
+        console.warn(`[ScraperEngine] networkidle2 falló, reintentando con domcontentloaded...`);
+        await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      }
+
+      const finalUrl = page.url();
+      console.log(`[ScraperEngine] URL final: ${finalUrl}`);
+
+      // Scroll para forzar lazy loading
+      await autoScroll(page);
+
+      await page.waitForSelector(task.cssSelector, { timeout: 10000 });
+
+      const pageData = await page.evaluate((sel) => {
+        return Array.from(document.querySelectorAll(sel))
+          .map((el) => el.innerText.trim())
+          .filter(Boolean);
+      }, task.cssSelector);
+
+      console.log(`[ScraperEngine] Página ${i + 1}: ${pageData.length} elemento(s)`);
+
+      if (pageData.length === 0) {
+        console.log(`[ScraperEngine] Sin datos en página ${i + 1}, finalizando paginación.`);
+        break;
+      }
+
+      allData.push(...pageData);
+
+      // Delay aleatorio anti-ban entre páginas
+      if (task.isPaginated && i < pagesToScrape - 1) {
+        const delay = Math.random() * 2500 + 1500;
+        console.log(`[ScraperEngine] Esperando ${Math.round(delay)}ms antes de siguiente página...`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
     }
 
-    const finalUrl = page.url();
-    console.log(`[ScraperEngine] URL final: ${finalUrl}`);
-
-    await page.waitForSelector(selector, { timeout: 10000 });
-
-    const data = await page.evaluate((sel) => {
-      return Array.from(document.querySelectorAll(sel))
-        .map((el) => el.innerText.trim())
-        .filter(Boolean);
-    }, selector);
-
-    console.log(`[ScraperEngine] HTML extrajo ${data.length} elemento(s)`);
-    return data;
+    console.log(`[ScraperEngine] Total extraído: ${allData.length} elemento(s)`);
+    return allData;
 
   } catch (error) {
-    console.error(`[ScraperEngine] ERROR en ${url}: ${error.message}`);
+    console.error(`[ScraperEngine] ERROR: ${error.message}`);
     try {
       const bodyText = await page.evaluate(
         () => document.body?.innerText?.substring(0, 300) || 'sin contenido'
       );
       console.error(`[ScraperEngine] Contenido al fallar: ${bodyText}`);
     } catch (_) {}
-    return [];
+    return allData;
   } finally {
     await browser.close();
     console.log(`[ScraperEngine] Browser cerrado`);
@@ -169,30 +183,18 @@ async function extractFromHtml(url, selector) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Punto de entrada unificado
+// Punto de entrada unificado — recibe el objeto task completo
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Extrae datos de una URL usando el modo adecuado según el tipo de URL.
- *
- * Modo API  → URL comienza con api.* → selectorOrPath es una ruta JSON
- *             Ej: url = "https://api.mercadolibre.com/sites/MCO/search?q=tvs+raider"
- *                 selectorOrPath = "results[].title"
- *
- * Modo HTML → cualquier otra URL     → selectorOrPath es un selector CSS
- *             Ej: url = "https://ejemplo.com/productos"
- *                 selectorOrPath = ".product-title"
- *
- * @param {string} url             - URL objetivo.
- * @param {string} selectorOrPath  - Selector CSS o ruta JSON según el modo.
- * @returns {Promise<string[]>}
+ * @param {Object} task - Documento completo de MongoDB con todos sus campos.
  */
-async function extractData(url, selectorOrPath) {
+async function extractData(task) {
   try {
-    if (isJsonApi(url)) {
-      return await extractFromApi(url, selectorOrPath);
+    if (isJsonApi(task.targetUrl)) {
+      return await extractFromApi(task.targetUrl, task.cssSelector);
     } else {
-      return await extractFromHtml(url, selectorOrPath);
+      return await extractFromHtml(task);
     }
   } catch (error) {
     console.error(`[ScraperEngine] Error inesperado: ${error.message}`);
