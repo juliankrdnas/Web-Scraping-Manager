@@ -14,6 +14,8 @@ Este archivo registra el avance completo del proyecto **Web Scraping Manager** a
 | **Motor de scraping** | Puppeteer-Extra + Stealth Plugin (HTML) / fetch nativo (API REST) |
 | **Paginación** | Dinámica con comodín `{{PAGE_PARAM}}` |
 | **TTL de datos** | Configurable via `DATA_RETENTION_DAYS` (default 90 días) |
+| **Backend en producción** | https://web-scraping-manager-api.onrender.com |
+| **Frontend en producción** | https://datavore.netlify.app |
 
 ---
 
@@ -196,7 +198,59 @@ maxPages:        { type: Number, default: 1 }  // tope: 10
 
 ---
 
-### v1.6 — Documentación técnica y guía de deploy
+### v1.7 — Deploy completo a producción
+**Commits:** `config: add Render deployment files` · `config: set production API URL to Render deployment` · `fix: increase Angular build budgets for production deploy`
+
+**Infraestructura desplegada:**
+
+| Capa | Plataforma | URL |
+|---|---|---|
+| Frontend (Angular) | Netlify | https://datavore.netlify.app |
+| Backend (Node.js) | Render | https://web-scraping-manager-api.onrender.com |
+| Base de datos | MongoDB Atlas | Sin cambios (ya estaba en la nube) |
+
+**Archivos creados para Render:**
+- `render.yaml` — configuración del servicio: rootDir, buildCommand, startCommand y variables de entorno base
+- `scraper-backend/.puppeteerrc.cjs` — indica a Puppeteer el directorio de cache de Chromium en Render (`/opt/render/.cache/puppeteer`)
+
+**Build command en Render:**
+```
+npm install && npx puppeteer browsers install chrome
+```
+Descarga Chromium durante cada deploy ya que Render no lo incluye preinstalado.
+
+**Variables de entorno configuradas en Render:**
+- `MONGO_URI` — cadena de conexión a MongoDB Atlas
+- `PORT` — 3000
+- `ALLOWED_ORIGIN` — `https://datavore.netlify.app` (actualizado tras obtener la URL de Netlify)
+- `DATA_RETENTION_DAYS` — 90
+- `NODE_ENV` — production
+- `PUPPETEER_CACHE_DIR` — `/opt/render/.cache/puppeteer`
+
+**Problema encontrado y resuelto durante el deploy de Netlify:**
+El build falló con error de budget de Angular:
+```
+✘ [ERROR] task-manager.component.scss exceeded maximum budget.
+  Budget 4.00 kB was not met by 2.31 kB with a total of 6.31 kB.
+```
+Los estilos del componente crecieron con la sección de paginación agregada en v1.4.
+Solución: actualizar los budgets en `angular.json`:
+- `anyComponentStyle`: warning 6kb / error 10kb (antes 2kb / 4kb)
+- `initial`: warning 800kb / error 2mb (antes 500kb / 1mb)
+
+**Configuración de Netlify:**
+- Base directory: `scraper-frontend`
+- Build command: `npm run build`
+- Publish directory: `scraper-frontend/dist/scraper-frontend/browser`
+- Angular usa automáticamente `environment.prod.ts` en el build de producción gracias al `fileReplacements` configurado en `angular.json`
+
+**Archivos modificados:**
+- `render.yaml` — creado
+- `scraper-backend/.puppeteerrc.cjs` — creado
+- `scraper-frontend/src/environments/environment.prod.ts` — URL actualizada a `https://web-scraping-manager-api.onrender.com/api`
+- `scraper-frontend/angular.json` — budgets de build aumentados
+
+---
 **Commit:** `docs: add technical context and Render deployment guide`
 
 **Archivos creados:**
