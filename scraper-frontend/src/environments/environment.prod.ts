@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://tu-api.com/api', // ← reemplazar con la URL real en producción
+  apiUrl: 'https://web-scraping-manager-api.onrender.com/api',
 };
