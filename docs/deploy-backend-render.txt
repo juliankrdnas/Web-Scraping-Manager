@@ -1,0 +1,366 @@
+================================================================================
+  GUÍA DE DESPLIEGUE — BACKEND EN RENDER
+  (Node.js + Express + Puppeteer → Render.com)
+================================================================================
+
+ARQUITECTURA DE DESTINO
+------------------------
+  Frontend   → Netlify      (a deployar en un paso posterior)
+  Backend    → Render.com   (este documento)
+  Base datos → MongoDB Atlas (sin cambios, ya está en la nube)
+
+PREREQUISITOS
+-------------
+  - Cuenta en GitHub (ya configurada con el repositorio)
+  - Cuenta en MongoDB Atlas (ya funcionando con el proyecto)
+  - Repositorio: https://github.com/juliankrdnas/Web-Scraping-Manager
+
+  Crear cuenta en Render si no la tenés:
+  https://render.com → "Get Started for Free" → Registrarse con GitHub
+  (recomendado registrarse con GitHub para simplificar la conexión)
+
+================================================================================
+  PASO 1: PREPARAR EL REPOSITORIO PARA RENDER
+================================================================================
+
+Render necesita saber que debe instalar Chromium al deployar porque Puppeteer
+lo requiere. Por defecto Puppeteer intenta descargar Chromium durante npm install,
+pero en Render esto a veces falla o descarga una versión incorrecta.
+
+La solución es agregar un archivo de configuración que le diga a Render exactamente
+cómo buildear y qué variables de entorno de sistema necesita.
+
+--- 1.1 Crear render.yaml en la raíz del proyecto ---
+
+Crear el archivo: Orquestador/render.yaml
+
+Contenido:
+
+  services:
+    - type: web
+      name: web-scraping-manager-api
+      runtime: node
+      rootDir: scraper-backend
+      buildCommand: npm install && npx puppeteer browsers install chrome
+      startCommand: node server.js
+      envVars:
+        - key: NODE_ENV
+          value: production
+        - key: PUPPETEER_CACHE_DIR
+          value: /opt/render/.cache/puppeteer
+
+IMPORTANTE: El campo "rootDir: scraper-backend" le dice a Render que solo
+tome esa subcarpeta como raíz del proyecto, ignorando el código de Angular.
+
+El comando "npx puppeteer browsers install chrome" descarga Chromium en el
+servidor de Render durante cada deploy. Esto es necesario porque Render no
+incluye Chrome preinstalado en sus máquinas.
+
+--- 1.2 Agregar .puppeteerrc.cjs en scraper-backend ---
+
+Este archivo le dice a Puppeteer dónde está el ejecutable de Chrome en el
+servidor de Render.
+
+Crear el archivo: Orquestador/scraper-backend/.puppeteerrc.cjs
+
+Contenido:
+
+  const { join } = require('path');
+
+  module.exports = {
+    cacheDirectory: join(process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer'),
+  };
+
+--- 1.3 Verificar .gitignore ---
+
+Asegurarse de que estos archivos NO están en .gitignore (deben subirse al repo):
+  - render.yaml
+  - scraper-backend/.puppeteerrc.cjs
+
+Los que SÍ deben seguir ignorados:
+  - scraper-backend/.env (nunca subir al repo)
+  - scraper-backend/node_modules/
+  - scraper-frontend/node_modules/
+
+--- 1.4 Hacer commit y push de estos archivos ---
+
+  git add render.yaml scraper-backend/.puppeteerrc.cjs
+  git commit -m "config: add Render deployment files"
+  git push
+
+================================================================================
+  PASO 2: OBTENER LAS CREDENCIALES DE MONGODB ATLAS
+================================================================================
+
+Necesitás la cadena de conexión MONGO_URI que ya está en tu archivo .env local.
+También necesitás confirmar que Atlas permite conexiones desde cualquier IP,
+porque Render usa IPs dinámicas que cambian.
+
+--- 2.1 Obtener la MONGO_URI ---
+
+Ya la tenés en scraper-backend/.env. El formato es algo así:
+  mongodb+srv://usuario:contraseña@cluster.mongodb.net/scraper?...
+
+Copiala, la vas a necesitar en el Paso 3.
+
+--- 2.2 Permitir conexiones desde cualquier IP en Atlas ---
+
+  1. Ir a https://cloud.mongodb.com
+  2. Seleccionar tu proyecto
+  3. En el menú izquierdo ir a "Security" → "Network Access"
+  4. Click en "Add IP Address"
+  5. Click en "Allow Access from Anywhere" (agrega 0.0.0.0/0)
+  6. Click en "Confirm"
+
+  Por qué es necesario:
+  Render asigna IPs dinámicas a sus servidores. No es posible agregar una IP
+  fija de Render en Atlas (en el tier gratuito de Render). La opción 0.0.0.0/0
+  permite conexiones desde cualquier IP, lo cual es seguro porque MongoDB
+  igual requiere usuario y contraseña para conectarse.
+
+================================================================================
+  PASO 3: CREAR EL SERVICIO EN RENDER
+================================================================================
+
+  1. Ir a https://render.com y hacer login
+
+  2. En el Dashboard, click en "New +" → "Web Service"
+
+  3. En "Source Code", conectar con GitHub:
+     - Click en "Connect account" si es la primera vez
+     - Buscar el repositorio: Web-Scraping-Manager
+     - Click en "Connect"
+
+  4. Configurar el servicio:
+
+     Name:           web-scraping-manager-api
+                     (o el nombre que prefieras, será parte de la URL)
+
+     Region:         Oregon (US West) o la más cercana a Colombia
+                     (puede ser también Ohio o Frankfurt si hay opción)
+
+     Branch:         master
+
+     Root Directory: scraper-backend
+                     (MUY IMPORTANTE: esto le dice a Render que el backend
+                      está en esa subcarpeta, no en la raíz del repo)
+
+     Runtime:        Node
+
+     Build Command:  npm install && npx puppeteer browsers install chrome
+                     (instala dependencias de Node Y descarga Chromium)
+
+     Start Command:  node server.js
+
+     Instance Type:  Free
+                     (el tier gratuito tiene 512MB RAM y 0.1 CPU)
+                     NOTA: En el tier gratuito el servidor "duerme" después
+                     de 15 minutos sin recibir requests. El primer request
+                     después de ese período tarda ~30 segundos en despertar.
+                     Para uso productivo continuo se recomienda el tier Starter
+                     ($7/mes) que mantiene el servidor activo.
+
+  5. Click en "Create Web Service"
+     Render comenzará el primer deploy. Esto tarda entre 5 y 10 minutos
+     la primera vez porque descarga e instala Chromium.
+
+================================================================================
+  PASO 4: CONFIGURAR VARIABLES DE ENTORNO EN RENDER
+================================================================================
+
+Una vez creado el servicio (o durante la creación), ir a la pestaña "Environment":
+
+  Click en "Environment" en el menú del servicio → "Add Environment Variable"
+
+  Agregar las siguientes variables:
+
+  ┌─────────────────────────┬────────────────────────────────────────────────┐
+  │ Variable                │ Valor                                          │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ MONGO_URI               │ Tu cadena de conexión completa de MongoDB Atlas│
+  │                         │ (la que copiaste en el Paso 2.1)               │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ PORT                    │ 3000                                           │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ ALLOWED_ORIGIN          │ * (por ahora, hasta tener la URL de Netlify)   │
+  │                         │ Cuando tengas la URL del frontend cambiarlo    │
+  │                         │ por: https://tu-app.netlify.app                │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ DATA_RETENTION_DAYS     │ 90                                             │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ NODE_ENV                │ production                                     │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ PUPPETEER_CACHE_DIR     │ /opt/render/.cache/puppeteer                   │
+  └─────────────────────────┴────────────────────────────────────────────────┘
+
+  IMPORTANTE sobre ALLOWED_ORIGIN:
+  Por ahora se pone * para que el backend acepte requests de cualquier origen
+  mientras se termina de configurar el frontend. Una vez que Netlify asigne
+  la URL del frontend, cambiar este valor al dominio exacto de Netlify.
+  Esto se puede hacer sin redesployar: Render aplica los cambios de variables
+  de entorno al instante.
+
+  IMPORTANTE sobre MONGO_URI:
+  Esta variable contiene usuario y contraseña. Render la maneja como "secret"
+  y no la muestra en texto plano en los logs. Nunca agregarla a un archivo
+  que se suba al repositorio.
+
+  Una vez agregadas todas las variables, click en "Save Changes".
+  Render hará un nuevo deploy automáticamente.
+
+================================================================================
+  PASO 5: VERIFICAR EL DEPLOY
+================================================================================
+
+--- 5.1 Monitorear los logs del deploy ---
+
+  En el Dashboard de Render, ir al servicio → pestaña "Logs"
+  
+  Durante el build se debería ver algo así:
+  
+    ==> Running build command 'npm install && npx puppeteer browsers install chrome'
+    ...
+    added 234 packages
+    ...
+    Downloading chrome 127.0.6533.88 - 149 MB [====================] 100%
+    chrome@127.0.6533.88 /opt/render/.cache/puppeteer/chrome/...
+    ==> Build successful
+    ==> Starting service with 'node server.js'
+
+  Y en los logs de arranque:
+  
+    [Server] Servidor corriendo en http://localhost:3000
+    [DB] Conectado a MongoDB
+    [Scheduler] Cargando N tarea(s) activa(s)...
+
+  Si los logs muestran esos mensajes, el deploy fue exitoso.
+
+--- 5.2 Obtener la URL pública ---
+
+  Una vez deployado, Render asigna una URL pública al servicio.
+  Tiene el formato:
+    https://web-scraping-manager-api.onrender.com
+  (o el nombre que hayas elegido)
+
+  Esta URL la vas a necesitar para:
+    a) Probar la API manualmente
+    b) Configurar el frontend en Netlify
+
+--- 5.3 Probar la API en producción ---
+
+  Desde el browser o desde cualquier cliente HTTP, hacer GET a:
+    https://[tu-servicio].onrender.com/api/tasks
+
+  Debería devolver un array JSON (vacío [] si no hay tareas, o las tareas
+  que ya tenés en Atlas).
+
+  Si devuelve JSON → el backend está funcionando correctamente en producción.
+  Si devuelve error 500 → revisar los logs, probablemente hay un problema
+  con MONGO_URI.
+
+================================================================================
+  PASO 6: ACTUALIZAR ALLOWED_ORIGIN (DESPUÉS DE DEPLOYAR NETLIFY)
+================================================================================
+
+Este paso se hace DESPUÉS de desplegar el frontend en Netlify.
+
+  1. Ir al Dashboard de Render → tu servicio → "Environment"
+  2. Buscar la variable ALLOWED_ORIGIN
+  3. Cambiar el valor de * a la URL exacta de Netlify:
+     https://[tu-app].netlify.app
+  4. Click "Save Changes"
+  5. Render hace un redeploy automático con el nuevo valor
+
+  Por qué importa:
+  Con ALLOWED_ORIGIN=* cualquier sitio web en internet puede hacer requests
+  a tu API (incluyendo sitios maliciosos). Restringirlo a tu dominio de Netlify
+  evita eso.
+
+================================================================================
+  PASO 7: ACTUALIZAR EL FRONTEND PARA PRODUCCIÓN
+================================================================================
+
+Antes de deployar el frontend en Netlify, hay que actualizar environment.prod.ts
+con la URL real del backend en Render.
+
+Archivo: scraper-frontend/src/environments/environment.prod.ts
+
+  Antes:
+    export const environment = {
+      production: true,
+      apiUrl: 'https://tu-api.com/api',
+    };
+
+  Después (con la URL real de Render):
+    export const environment = {
+      production: true,
+      apiUrl: 'https://[tu-servicio].onrender.com/api',
+    };
+
+Hacer commit y push de este cambio antes de configurar Netlify.
+
+================================================================================
+  TROUBLESHOOTING — PROBLEMAS COMUNES
+================================================================================
+
+Problema: "Could not find Chrome" en los logs de Render
+  Causa:    Chromium no se descargó correctamente durante el build
+  Solución: 
+    1. Verificar que el Build Command incluye:
+       npx puppeteer browsers install chrome
+    2. Verificar que la variable PUPPETEER_CACHE_DIR está configurada:
+       /opt/render/.cache/puppeteer
+    3. Hacer un deploy manual desde el Dashboard de Render
+
+Problema: "MongooseServerSelectionError" o no conecta a MongoDB
+  Causa:    MONGO_URI incorrecta o Atlas no permite la IP de Render
+  Solución:
+    1. Verificar que la variable MONGO_URI en Render está correctamente copiada
+       (sin espacios al inicio o al final)
+    2. Ir a MongoDB Atlas → Network Access → confirmar que 0.0.0.0/0 está
+       agregada como IP permitida
+
+Problema: El primer request tarda 30 segundos
+  Causa:    El tier gratuito de Render "duerme" el servidor tras 15 min sin uso
+  Solución: Es el comportamiento esperado en el tier Free.
+    - Opción A: Aceptarlo (solo afecta al primer request tras período inactivo)
+    - Opción B: Upgrade al tier Starter ($7/mes) para servidor siempre activo
+    - Opción C: Configurar un cron externo (ej: cron-job.org) que haga un
+                GET a /api/tasks cada 14 minutos para mantenerlo despierto
+
+Problema: CORS error en el frontend
+  Causa:    ALLOWED_ORIGIN no incluye el dominio del frontend
+  Solución:
+    1. Ir a Render → Environment → ALLOWED_ORIGIN
+    2. Asegurarse que el valor sea exactamente la URL de Netlify
+       (sin barra al final, con https://)
+    3. Guardar → Render redeploya
+
+Problema: Los cron jobs no se ejecutan en producción
+  Causa:    En el tier gratuito el servidor duerme entre requests, lo que
+            interrumpe los cron jobs programados en memoria
+  Solución: Usar el tier Starter de Render (servidor siempre activo) o
+            migrar el scheduler a una solución externa como Supabase Edge
+            Functions o un cron service dedicado
+
+================================================================================
+  RESUMEN RÁPIDO
+================================================================================
+
+  1. Crear render.yaml en la raíz del repo
+  2. Crear .puppeteerrc.cjs en scraper-backend/
+  3. Commit y push
+  4. En MongoDB Atlas → Network Access → Allow 0.0.0.0/0
+  5. En Render → New Web Service → conectar repo → configurar:
+       Root Directory: scraper-backend
+       Build: npm install && npx puppeteer browsers install chrome
+       Start: node server.js
+  6. Agregar variables de entorno en Render (MONGO_URI, PORT, etc.)
+  7. Verificar logs y testear GET /api/tasks
+  8. Copiar la URL de Render (.onrender.com)
+  9. Actualizar environment.prod.ts con esa URL
+  10. Continuar con el deploy del frontend en Netlify
+
+================================================================================
+  FIN DEL DOCUMENTO
+================================================================================

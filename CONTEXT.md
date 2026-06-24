@@ -196,7 +196,18 @@ maxPages:        { type: Number, default: 1 }  // tope: 10
 
 ---
 
-## Sitios de prueba recomendados
+### v1.6 — Documentación técnica y guía de deploy
+**Commit:** `docs: add technical context and Render deployment guide`
+
+**Archivos creados:**
+- `docs/contexto-tecnico.txt` — documento completo con explicación de todos los conceptos técnicos del proyecto: web scraping, Puppeteer, Stealth Plugin, selectores CSS, node-cron, MongoDB/Mongoose, TTL, Express/REST, CORS, Angular standalone, Reactive Forms, Observables, arquitectura completa, seguridad implementada, dependencias, y conceptos de deployment
+- `docs/deploy-backend-render.txt` — guía paso a paso para desplegar el backend en Render.com: preparación del repo (render.yaml + .puppeteerrc.cjs), configuración de MongoDB Atlas para IPs dinámicas, creación del servicio en Render, variables de entorno, verificación del deploy, y troubleshooting de problemas comunes
+
+**Decisión de arquitectura documentada:**
+- Netlify requiere solo el frontend estático. No tiene ninguna relación con la base de datos.
+- MongoDB Atlas sigue siendo válido en producción sin necesidad de migrar a Supabase.
+- La migración a Supabase es una decisión independiente del despliegue, recomendada solo cuando se quieran agregar autenticación de usuarios o Realtime.
+- Render es el host elegido para el backend porque soporta instalación de Chromium para Puppeteer.
 
 | Sitio | URL | Selector CSS |
 |---|---|---|

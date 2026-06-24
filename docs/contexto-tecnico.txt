@@ -1,0 +1,447 @@
+================================================================================
+  WEB SCRAPING MANAGER — CONTEXTO TÉCNICO COMPLETO
+================================================================================
+
+Este documento explica en profundidad todos los conceptos técnicos que conforman
+el proyecto: qué hace cada pieza, cómo se relacionan entre sí, y por qué se
+tomaron las decisiones de diseño que se tomaron.
+
+--------------------------------------------------------------------------------
+1. QUÉ ES EL WEB SCRAPING
+--------------------------------------------------------------------------------
+
+Web scraping es el proceso de extraer datos de páginas web de forma automática.
+En lugar de que un humano entre a un sitio, lea la información y la copie a mano,
+un programa lo hace por él.
+
+Casos de uso comunes:
+- Monitoreo de precios de productos en e-commerce
+- Recolección de titulares de noticias
+- Seguimiento de cotizaciones financieras
+- Extracción de catálogos de productos
+- Auditoría de contenidos de sitios propios
+
+Tipos de scraping:
+
+  a) Estático: La página devuelve HTML completo en la primera respuesta.
+     Se puede leer directamente sin ejecutar JavaScript.
+     Herramientas típicas: Cheerio, BeautifulSoup.
+
+  b) Dinámico: La página carga un HTML vacío o mínimo y luego usa JavaScript
+     para inyectar el contenido real (React, Angular, Vue, etc.).
+     Requiere un browser real que ejecute ese JS antes de extraer datos.
+     Herramientas típicas: Puppeteer, Playwright, Selenium.
+
+Este proyecto maneja el caso dinámico, que es el más complejo y el más común
+en sitios modernos.
+
+--------------------------------------------------------------------------------
+2. QUÉ ES PUPPETEER
+--------------------------------------------------------------------------------
+
+Puppeteer es una librería de Node.js desarrollada por el equipo de Google Chrome.
+Permite controlar un browser Chromium (o Chrome) de forma programática, es decir,
+desde código JavaScript/Node.js.
+
+Piensa en Puppeteer como un "robot" que maneja Chrome:
+- Puede abrir una URL
+- Esperar a que cargue el contenido
+- Hacer click en botones
+- Llenar formularios
+- Hacer scroll
+- Tomar screenshots
+- Extraer texto de elementos del DOM
+
+Cómo funciona internamente:
+  Puppeteer se comunica con Chrome a través del Chrome DevTools Protocol (CDP),
+  que es la misma interfaz que usa el panel de desarrolladores de Chrome cuando
+  inspeccionás una página.
+
+Modo Headless vs Visible:
+  - headless: true  → Chrome corre en segundo plano, sin ventana visible.
+                      Más rápido, consume menos recursos. Ideal para servidores.
+  - headless: false → Chrome abre una ventana real. Útil para depurar.
+
+En este proyecto se usa headless: 'new' que es el nuevo modo headless de Chrome
+124+ con mejor compatibilidad y menor detectabilidad como bot.
+
+Costo de recursos:
+  Cada instancia de Puppeteer lanza un proceso completo de Chromium.
+  En sistemas con poca RAM (512MB - 1GB) esto puede ser un problema si se
+  ejecutan varias tareas simultáneamente.
+
+--------------------------------------------------------------------------------
+3. QUÉ ES PUPPETEER-EXTRA Y EL STEALTH PLUGIN
+--------------------------------------------------------------------------------
+
+puppeteer-extra es un wrapper sobre Puppeteer que permite agregarle plugins.
+El más importante es puppeteer-extra-plugin-stealth.
+
+¿Por qué es necesario?
+  Chrome en modo headless deja rastros que los sitios web detectan:
+  - navigator.webdriver === true (indica control automatizado)
+  - window.chrome no está definido
+  - Los plugins del browser están vacíos
+  - Las fuentes disponibles son distintas a un browser real
+  - El comportamiento de las APIs de Hardware Concurrency es diferente
+  - Y otras ~20 propiedades más
+
+  Sitios como MercadoLibre, LinkedIn, Ticketmaster tienen scripts anti-bot
+  que leen estas propiedades y redirigen a páginas de login o CAPTCHA cuando
+  detectan un headless browser.
+
+Qué hace Stealth Plugin:
+  Parchea automáticamente todas esas propiedades para que el browser headless
+  parezca un Chrome real usado por una persona. Es como un disfraz para el bot.
+
+Cómo se usa en el proyecto:
+  const puppeteer = require('puppeteer-extra');
+  const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+  puppeteer.use(StealthPlugin());
+  // A partir de aquí se usa igual que puppeteer normal
+
+--------------------------------------------------------------------------------
+4. QUÉ ES UN SELECTOR CSS
+--------------------------------------------------------------------------------
+
+Un selector CSS es una expresión que identifica uno o más elementos dentro del
+HTML de una página web. Los mismos selectores que se usan en hojas de estilo CSS
+sirven para apuntar a elementos que se quieren extraer.
+
+Ejemplos:
+  .precio           → Todos los elementos con clase "precio"
+  #titulo           → El elemento con id "titulo"
+  h1                → Todos los encabezados h1
+  article h3 a      → Los <a> dentro de <h3> dentro de <article>
+  .card .title      → Los .title que estén dentro de .card
+  p.price_color     → Los <p> que tengan la clase "price_color"
+
+Cómo encontrar el selector correcto:
+  1. Abrir el sitio en Chrome
+  2. Click derecho sobre el elemento que querés extraer
+  3. "Inspeccionar elemento"
+  4. En el panel de DevTools, click derecho sobre el elemento en el HTML
+  5. "Copy" → "Copy selector"
+  Eso te da el selector exacto para ese elemento.
+
+En este proyecto el campo "cssSelector" de cada tarea recibe exactamente esto.
+
+--------------------------------------------------------------------------------
+5. QUÉ ES NODE-CRON Y EL FORMATO CRON
+--------------------------------------------------------------------------------
+
+node-cron es una librería que permite ejecutar funciones en JavaScript según
+una programación temporal definida en formato cron.
+
+El formato cron tiene 5 campos separados por espacios:
+  ┌─────────── minuto        (0 - 59)
+  │ ┌───────── hora          (0 - 23)
+  │ │ ┌─────── día del mes   (1 - 31)
+  │ │ │ ┌───── mes           (1 - 12)
+  │ │ │ │ ┌─── día de semana (0 - 6, donde 0 = domingo)
+  │ │ │ │ │
+  * * * * *
+
+El asterisco (*) significa "cualquier valor".
+
+Ejemplos:
+  * * * * *       → Cada minuto
+  */5 * * * *     → Cada 5 minutos
+  0 * * * *       → Al inicio de cada hora (minuto 0)
+  0 */6 * * *     → Cada 6 horas
+  0 0 * * *       → Todos los días a medianoche
+  0 9 * * 1-5     → Lunes a viernes a las 9:00 AM
+  30 8 1 * *      → El primer día de cada mes a las 8:30 AM
+
+En este proyecto, cada tarea tiene su propia expresión cron. Cuando el servidor
+arranca, lee todas las tareas activas de la base de datos y las registra en
+el scheduler en memoria usando un Map<taskId, CronJob>.
+
+--------------------------------------------------------------------------------
+6. QUÉ ES MONGODB Y MONGOOSE
+--------------------------------------------------------------------------------
+
+MongoDB:
+  Base de datos NoSQL orientada a documentos. En lugar de guardar datos en
+  tablas con filas y columnas (como SQL), guarda "documentos" en formato BSON
+  (similar a JSON). Cada documento puede tener una estructura diferente.
+
+  Por qué es popular para scraping:
+  - Los datos extraídos de la web son irregulares (un sitio tiene precio y título,
+    otro tiene 10 características técnicas). MongoDB se adapta fácilmente.
+  - No requiere definir un schema estricto previamente.
+
+MongoDB Atlas:
+  Es la versión cloud de MongoDB, administrada por la misma empresa.
+  Ofrece un tier gratuito (M0) con 512MB de almacenamiento.
+  El proyecto usa Atlas para no depender de una instalación local.
+
+Mongoose:
+  Es un ODM (Object Document Mapper) para Node.js. Actúa como puente entre
+  el código Node y MongoDB, agregando:
+  - Definición de schemas (estructura esperada de los documentos)
+  - Validaciones automáticas antes de guardar
+  - Métodos de consulta más amigables
+  - Hooks (antes/después de guardar, eliminar, etc.)
+
+TTL (Time To Live) en MongoDB:
+  MongoDB permite definir índices TTL sobre campos de tipo Date.
+  Cuando un documento tiene un campo Date con un índice TTL, MongoDB lo
+  elimina automáticamente después del tiempo configurado.
+
+  En este proyecto:
+    timestamp: { type: Date, default: Date.now, expires: RETENTION_SECONDS }
+  
+  Donde RETENTION_SECONDS = DATA_RETENTION_DAYS * 86400.
+  Esto evita que la colección scrapped_data crezca indefinidamente.
+
+--------------------------------------------------------------------------------
+7. QUÉ ES EXPRESS Y LA ARQUITECTURA REST
+--------------------------------------------------------------------------------
+
+Express.js:
+  Framework minimalista para Node.js que simplifica la creación de servidores
+  HTTP. Permite definir rutas (endpoints), middlewares y manejar request/response.
+
+REST (Representational State Transfer):
+  Estilo arquitectónico para APIs web. Define convenciones sobre cómo nombrar
+  rutas y qué métodos HTTP usar para cada operación:
+
+  GET    → Obtener datos (no modifica nada)
+  POST   → Crear un nuevo recurso
+  PUT    → Actualizar un recurso existente
+  DELETE → Eliminar un recurso
+
+  Cada "recurso" tiene su propia URL:
+  /api/tasks        → La colección de tareas
+  /api/tasks/:id    → Una tarea específica
+  /api/data/:taskId → Los datos scrapeados de una tarea
+
+CORS (Cross-Origin Resource Sharing):
+  Por seguridad, los browsers bloquean por defecto las peticiones HTTP que van
+  de un origen (dominio:puerto) a otro diferente.
+  El frontend en localhost:4200 y el backend en localhost:3000 son orígenes
+  distintos, por lo que el backend debe incluir headers CORS para permitirlo.
+
+  En producción:
+  - Frontend en Netlify (ej: https://mi-app.netlify.app)
+  - Backend en Render (ej: https://mi-api.onrender.com)
+  Son orígenes distintos, así que CORS sigue siendo necesario.
+
+  En el proyecto: app.use(cors({ origin: process.env.ALLOWED_ORIGIN }))
+
+--------------------------------------------------------------------------------
+8. QUÉ ES ANGULAR Y POR QUÉ STANDALONE COMPONENTS
+--------------------------------------------------------------------------------
+
+Angular:
+  Framework frontend desarrollado por Google para construir Single Page
+  Applications (SPA). Una SPA carga una sola vez y luego actualiza el DOM
+  dinámicamente sin recargar la página completa.
+
+Angular 17 Standalone Components:
+  Antes de Angular 14, todos los componentes debían declararse en un NgModule
+  (un archivo de configuración centralizado). Desde Angular 17 los componentes
+  standalone no necesitan NgModule: se auto-declaran e importan lo que necesitan
+  directamente. Código más simple y tree-shaking más eficiente.
+
+Angular Material:
+  Librería de componentes UI para Angular que implementa Material Design
+  (el sistema de diseño de Google). Provee: botones, inputs, tablas, paginadores,
+  chips, toggles, snackbars, etc., con accesibilidad integrada.
+
+Reactive Forms:
+  Sistema de formularios de Angular donde la lógica del formulario vive en
+  el componente TypeScript (no en el HTML). Permite validaciones complejas,
+  actualización dinámica de campos, y control total del estado.
+
+  En el proyecto se usa FormBuilder para crear el formulario de tareas con
+  sus validaciones (required, minLength, pattern para URLs, etc.).
+
+HttpClient + Observables (RxJS):
+  Angular usa RxJS para manejar operaciones asíncronas. HttpClient devuelve
+  Observables en lugar de Promises. Un Observable es un stream de datos al que
+  te "suscribís" para recibir los resultados.
+
+  Observable<Task[]> → Stream que emitirá exactamente un valor (el array de tareas)
+                        y luego se completará.
+
+Environment files:
+  Angular soporta múltiples entornos (dev, prod) mediante archivos de configuración.
+  environment.ts       → valores para desarrollo local
+  environment.prod.ts  → valores para producción
+
+  Cuando se hace ng build (sin --configuration), usa environment.ts.
+  Cuando se hace ng build --configuration production, Angular reemplaza
+  automáticamente environment.ts por environment.prod.ts (fileReplacements).
+
+--------------------------------------------------------------------------------
+9. ARQUITECTURA DEL PROYECTO
+--------------------------------------------------------------------------------
+
+El proyecto sigue una arquitectura cliente-servidor clásica con tres capas:
+
+  ┌─────────────────────────────────────────────┐
+  │         FRONTEND (Angular 17)               │
+  │  Corre en el browser del usuario            │
+  │  Puerto local: 4200                         │
+  │                                             │
+  │  task-manager  → CRUD de tareas             │
+  │  data-viewer   → Visualización de datos     │
+  │  api.service   → Capa de comunicación HTTP  │
+  └──────────────────┬──────────────────────────┘
+                     │ HTTP/REST (JSON)
+  ┌──────────────────▼──────────────────────────┐
+  │         BACKEND (Node.js + Express)         │
+  │  Puerto local: 3000                         │
+  │                                             │
+  │  server.js       → Rutas + Cron Scheduler   │
+  │  scraperEngine   → Motor dual (Pup + fetch) │
+  │  models/Task     → Schema de tareas         │
+  │  models/ScrapedData → Schema de resultados  │
+  └──────────────────┬──────────────────────────┘
+                     │ Mongoose / TCP
+  ┌──────────────────▼──────────────────────────┐
+  │         BASE DE DATOS (MongoDB Atlas)       │
+  │  Colecciones: tasks, scrapeddata            │
+  │  TTL automático en scrapeddata              │
+  └─────────────────────────────────────────────┘
+
+Flujo de una ejecución de tarea:
+  1. El usuario crea una tarea en el frontend con URL, selector y cron
+  2. El frontend hace POST /api/tasks → backend guarda en MongoDB y
+     registra el cron job en memoria
+  3. Cuando llega la hora programada (o el usuario presiona "Ejecutar ahora"):
+     a. scraperEngine detecta si es URL de API (hostname empieza con "api.")
+        o URL HTML
+     b. Si es API: fetch() directo, parsea JSON, extrae por ruta
+     c. Si es HTML: lanza Chromium con Stealth, navega a la URL, espera que
+        cargue, hace autoScroll, extrae todos los elementos que coincidan
+        con el selector CSS
+  4. Los valores extraídos se guardan como documentos en ScrapedData
+  5. Se actualiza lastRun y lastStatus en la tarea
+  6. El frontend muestra el resultado en tiempo real
+
+Paginación dinámica:
+  Si isPaginated = true, el motor itera hasta maxPages veces.
+  En cada iteración reemplaza {{PAGE_PARAM}} en la URL por:
+    paginationStart + (iteración * paginationStep)
+  
+  Ejemplo:
+    URL: https://sitio.com/lista?page={{PAGE_PARAM}}
+    paginationStart: 1, paginationStep: 1, maxPages: 3
+    
+    Iteración 0 → https://sitio.com/lista?page=1
+    Iteración 1 → https://sitio.com/lista?page=2
+    Iteración 2 → https://sitio.com/lista?page=3
+
+  Entre páginas hay un delay aleatorio de 1.5 a 4 segundos para simular
+  comportamiento humano y evitar rate limiting.
+
+--------------------------------------------------------------------------------
+10. SEGURIDAD IMPLEMENTADA
+--------------------------------------------------------------------------------
+
+CORS restringido:
+  Solo acepta requests del origen definido en ALLOWED_ORIGIN.
+  En local: http://localhost:4200
+  En producción: la URL de Netlify
+
+Sanitización de req.body:
+  Las rutas POST y PUT desestructuran explícitamente solo los campos conocidos
+  antes de pasarlos a Mongoose. Esto evita que un cliente malicioso inyecte
+  campos como _id, __v, lastStatus, o campos internos del schema.
+
+.env no versionado:
+  El archivo .env (que contiene MONGO_URI con usuario y contraseña) está en
+  .gitignore. Solo .env.example (sin valores reales) se sube al repositorio.
+
+TTL de datos:
+  Los datos scrapeados se eliminan automáticamente después de DATA_RETENTION_DAYS
+  días. Esto limita el crecimiento indefinido de la base de datos y reduce el
+  riesgo de exponer datos en caso de breach.
+
+maxlength en extractedValue:
+  Un selector CSS podría accidentalmente coincidir con un elemento enorme
+  (como todo el body de la página). El límite de 10.000 caracteres evita
+  documentos gigantes en MongoDB.
+
+Límite de páginas en paginación:
+  maxPages tiene un tope de 10 independientemente de lo que el usuario ingrese.
+  Math.min(maxPages, 10) en el backend. Evita que una tarea accidentalmente
+  lance 1000 requests a un sitio.
+
+--------------------------------------------------------------------------------
+11. DEPENDENCIAS CLAVE DEL PROYECTO
+--------------------------------------------------------------------------------
+
+BACKEND (scraper-backend/package.json):
+
+  express ^4.19         → Servidor HTTP
+  mongoose ^8.4         → ODM para MongoDB
+  node-cron ^3.0        → Scheduler de tareas
+  cors ^2.8             → Headers CORS
+  dotenv ^16.4          → Carga de variables de entorno desde .env
+  puppeteer ^22.10      → Motor de scraping (incluye Chromium)
+  puppeteer-extra       → Wrapper con soporte de plugins
+  puppeteer-extra-plugin-stealth → Evasión de detección anti-bot
+  nodemon ^3.1 (dev)    → Hot-reload en desarrollo
+
+FRONTEND (scraper-frontend/package.json):
+
+  @angular/* ^17.3      → Framework y módulos Angular
+  @angular/material ^17 → Componentes UI Material Design
+  @angular/cdk ^17      → Kit de utilidades para componentes custom
+  rxjs ~7.8             → Programación reactiva (Observables)
+  zone.js ~0.14         → Mecanismo de detección de cambios de Angular
+  typescript ~5.4       → Superset tipado de JavaScript
+
+--------------------------------------------------------------------------------
+12. CONCEPTOS DE DEPLOYMENT (PARA REFERENCIA)
+--------------------------------------------------------------------------------
+
+SPA (Single Page Application):
+  El frontend Angular compilado es un conjunto de archivos estáticos
+  (HTML, CSS, JS). No necesita un servidor Node.js para correr en producción.
+  Se sube a un CDN o hosting estático como Netlify, Vercel, o GitHub Pages.
+  El browser descarga esos archivos, los ejecuta localmente, y hace requests
+  a la API del backend.
+
+Servidor backend en la nube:
+  A diferencia del frontend, el backend necesita un servidor que ejecute
+  Node.js de forma permanente (24/7). Opciones:
+  - Render (recomendado, soporta Puppeteer)
+  - Railway
+  - Fly.io
+  - Heroku (de pago)
+
+Por qué Render para este proyecto:
+  Puppeteer necesita tener Chromium instalado en el servidor.
+  Render usa máquinas Linux (Ubuntu/Debian) donde Chrome puede instalarse
+  como dependencia del sistema operativo.
+  Además permite configurar variables de entorno, auto-deploy desde GitHub,
+  y tiene un tier gratuito funcional.
+
+Por qué MongoDB Atlas sigue siendo válido en producción:
+  El backend en Render se conecta a MongoDB Atlas exactamente igual que en
+  local, usando la misma MONGO_URI del .env. No hay cambios en el código.
+  Atlas ya está en la nube y acepta conexiones desde cualquier IP.
+
+Por qué NO es necesario migrar a Supabase para el despliegue:
+  La confusión viene de mezclar dos decisiones independientes:
+  1. Dónde hostear el backend (Render)
+  2. Qué base de datos usar (MongoDB Atlas o Supabase/PostgreSQL)
+  
+  Netlify solo sirve el frontend estático. No tiene ninguna interacción
+  con la base de datos. Por lo tanto, migrar de MongoDB a Supabase/PostgreSQL
+  no es un requisito para el despliegue. Es una decisión separada que agrega
+  complejidad sin beneficio inmediato.
+
+  La migración a Supabase vale la pena en el futuro cuando se quiera agregar:
+  - Autenticación de usuarios con roles
+  - Realtime (el data-viewer se actualiza solo cuando llegan datos)
+  - Row Level Security (cada usuario ve solo sus tareas)
+
+================================================================================
+  FIN DEL DOCUMENTO
+================================================================================
