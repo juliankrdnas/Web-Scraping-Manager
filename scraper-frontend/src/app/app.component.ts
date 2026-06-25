@@ -45,8 +45,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
       position: sticky; top: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 2rem; height: 64px;
-      background: var(--surface-glass);
-      backdrop-filter: blur(20px);
+      background: rgba(17, 17, 32, 0.97);
       border-bottom: 1px solid var(--border);
     }
 

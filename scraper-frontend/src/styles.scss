@@ -42,6 +42,22 @@
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Restaurar position: fixed en CDK overlay — el reset global puede pisarlo */
+.cdk-overlay-container,
+.cdk-global-overlay-wrapper {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.cdk-overlay-container     { width: 100vw; height: 100vh; }
+.cdk-overlay-connected-position-bounding-box { position: absolute !important; pointer-events: none; }
+.cdk-overlay-pane          { position: absolute !important; pointer-events: auto; }
+.cdk-overlay-backdrop      { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; pointer-events: auto; }
+.cdk-visually-hidden       { position: absolute !important; }
+
 html, body {
   height: 100%;
   background: var(--bg-base);
