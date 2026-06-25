@@ -9,7 +9,7 @@ const taskSchema = new mongoose.Schema(
     isActive:     { type: Boolean, default: true },
     lastRun:      { type: Date, default: null },
     lastStatus:   { type: String, enum: ['success', 'error', 'pending', 'never'], default: 'never' },
-    lastErrorCode:    { type: String, default: null },  // 'SELECTOR_NOT_FOUND' | 'NETWORK_ERROR' | 'BLOCKED' | 'TIMEOUT' | 'UNKNOWN'
+    lastErrorCode:    { type: String, enum: ['SELECTOR_NOT_FOUND', 'NETWORK_ERROR', 'BLOCKED', 'TIMEOUT', 'CONFIG_ERROR', 'UNKNOWN', null], default: null },
     lastErrorMessage: { type: String, default: null },  // mensaje legible del último fallo
 
     // ── Paginación dinámica ──────────────────────────────────

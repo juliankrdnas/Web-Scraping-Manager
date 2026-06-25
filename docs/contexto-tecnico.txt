@@ -966,3 +966,111 @@ en el template donde conceptualmente pertenece.
 ================================================================================
   FIN DEL DOCUMENTO (ACTUALIZADO v2.0)
 ================================================================================
+
+================================================================================
+  23. STEALTH PLUGIN — QUÉ PARCHEA Y POR QUÉ IMPORTA EN OSINT
+================================================================================
+
+El Stealth Plugin de puppeteer-extra resuelve el problema fundamental del
+scraping moderno: los sitios web han implementado scripts para detectar browsers
+automatizados y bloquearlos antes de servir contenido.
+
+Cómo detectan los sitios un browser headless (sin Stealth):
+
+  navigator.webdriver:
+    En Chrome normal: undefined
+    En Chrome headless: true
+    Los sitios leen esta propiedad para saber si el browser está siendo
+    controlado por WebDriver. Es la detección más básica y efectiva.
+
+  window.chrome:
+    En Chrome normal: objeto con propiedades como runtime, loadTimes, etc.
+    En Chrome headless: undefined o objeto vacío.
+    LinkedIn, Google y otros verifican que window.chrome exista y tenga
+    la estructura esperada.
+
+  navigator.plugins y navigator.mimeTypes:
+    En Chrome normal: lista con varios plugins (PDF Viewer, Chrome PDF, etc.)
+    En Chrome headless: arrays vacíos.
+    Un browser "real" siempre tiene al menos algunos plugins instalados.
+
+  Canvas fingerprinting:
+    Los sitios dibujan texto en un canvas HTML y miden el resultado pixel
+    a pixel. Los resultados difieren entre OS, GPU y driver de video.
+    Un headless server siempre produce los mismos valores, lo que lo
+    identifica como entorno automatizado.
+
+  Permisos y APIs de hardware:
+    navigator.hardwareConcurrency, navigator.deviceMemory, screen.width/height,
+    navigator.languages — todos tienen valores "perfectos" o inusuales en
+    entornos headless que delatan la automatización.
+
+Qué hace Stealth Plugin:
+  Parchea todas estas propiedades para que el browser headless presente los
+  mismos valores que un Chrome real en un PC de usuario. El resultado es que
+  los scripts de detección anti-bot ven un browser "normal".
+
+Evidencia de funcionamiento en este proyecto:
+  Durante las pruebas de clasificación de errores, LinkedIn y Facebook
+  NO redirigieron al login a pesar de ser dos de los sitios con anti-bot
+  más agresivos del mundo. El motor llegó a las páginas de contenido reales.
+  Los errores resultantes fueron SELECTOR_NOT_FOUND (el CSS era incorrecto),
+  no BLOCKED.
+
+Limitaciones de Stealth:
+  Stealth parchea propiedades estáticas del browser, pero no puede imitar:
+  - Comportamiento humano de mouse (movimientos, velocidad, patrones de click)
+  - Historial de navegación y cookies de sesión previas
+  - CAPTCHAs que requieren interacción visual (hCaptcha, reCaptcha v3)
+  - Sistemas de fingerprinting basados en comportamiento a lo largo del tiempo
+  - IP reputation (si la IP del servidor está en listas de datacenter/VPN)
+
+Cuándo BLOCKED sí ocurrirá en producción:
+  - Sitios con Cloudflare Bot Management activado
+  - Portales con reCAPTCHA v3 que analiza el comportamiento en tiempo real
+  - Sitios que bloquean rangos de IP de datacenter (Render, AWS, GCP)
+  - Plataformas que requieren cookies de sesión previas para servir contenido
+
+En el contexto OSINT:
+  La mayoría de los sitios de interés para ciberseguridad (portales de
+  vulnerabilidades, foros técnicos públicos, registros WHOIS, shodan.io)
+  no tienen anti-bot tan agresivo como LinkedIn. Stealth es más que suficiente
+  para esos casos de uso.
+
+--------------------------------------------------------------------------------
+24. VALIDACIÓN TEMPRANA VS VALIDACIÓN TARDÍA EN MOTORES DE SCRAPING
+--------------------------------------------------------------------------------
+
+Un principio de ingeniería importante en sistemas que consumen recursos costosos
+(como lanzar un browser Chromium) es "fail fast" — detectar errores de
+configuración lo antes posible, antes de gastar tiempo y memoria.
+
+Ejemplo en este proyecto:
+
+  Antes (validación tardía):
+    1. Lanzar browser Chromium (~2s, ~200MB RAM)
+    2. Abrir página y navegar (~5-10s)
+    3. Ejecutar waitForSelector
+    4. Detectar que {{PAGE_PARAM}} no fue reemplazado
+    5. Repetir 3 veces más (para maxPages=3)
+    Total: ~30-40 segundos y 3 requests innecesarios al sitio objetivo
+
+  Ahora (validación temprana):
+    1. Verificar que isPaginated=true implica {{PAGE_PARAM}} en la URL
+    2. Si no → lanzar CONFIG_ERROR inmediatamente
+    3. No se lanza ningún browser, no hay requests al sitio
+    Total: < 1ms
+
+Este patrón aplica a cualquier sistema que maneje recursos costosos:
+  - Validar credenciales antes de abrir una conexión a BD
+  - Verificar que un archivo existe antes de procesarlo
+  - Comprobar permisos antes de iniciar una operación larga
+
+En el motor de scraping, la jerarquía de validaciones es:
+  1. Validación de configuración (CONFIG_ERROR) — antes del browser
+  2. Validación de conectividad (NETWORK_ERROR) — durante goto
+  3. Validación de contenido (SELECTOR_NOT_FOUND, BLOCKED) — después de cargar
+
+================================================================================
+  FIN DEL DOCUMENTO (ACTUALIZADO v2.1)
+================================================================================

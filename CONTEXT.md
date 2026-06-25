@@ -536,14 +536,59 @@ Se creó el pipe `ReplacePipe` (standalone) para transformar `SELECTOR_NOT_FOUND
 | Desestructurar `req.body` | Schema validation (Joi/Zod) | Solución mínima viable; Joi/Zod es el next step |
 | Comodín `{{PAGE_PARAM}}` en URL | Query params separados | Flexible para cualquier patrón de URL (paths, query strings, offsets) |
 | Fetch nativo para APIs JSON | axios | Node 22 incluye fetch nativo, sin dependencia extra |
+| Validación CONFIG_ERROR antes del goto | Después de navegación | Evita gastar recursos scrapeando páginas repetidas innecesariamente |
+| Panel inline de error vs tooltip | matTooltip | Los mensajes de error son largos y el tooltip no es legible |
+| Exportación desde backend vs frontend | Cargar en memoria del browser | Con miles de registros el browser puede congelarse |
 
 ---
 
-## Pendiente / Roadmap (Fase 4)
+### v2.1 — Fix detección CONFIG_ERROR y mejoras en clasificación de errores
+**Commit:** `fix: improve CONFIG_ERROR detection, move validation before navigation`
 
-- **Cola de trabajos con BullMQ + Redis** — desacoplar el scheduler del servidor HTTP, evitar que múltiples Puppeteer simultáneos saturen la RAM
-- **Supabase Realtime** — reemplazar polling manual en `data-viewer` por actualizaciones en tiempo real via websocket
+**Problema:** la detección de `CONFIG_ERROR` estaba ubicada después de la navegación, lo que permitía que el motor scrapeara exitosamente URLs con paginación activa pero sin el comodín `{{PAGE_PARAM}}` — simplemente repetía la misma página N veces sin error.
+
+**Solución:** la validación se movió al inicio de `extractFromHtml`, antes de lanzar el browser, verificando que si `isPaginated === true` la URL debe contener `{{PAGE_PARAM}}`:
+```js
+if (task.isPaginated && !task.targetUrl.includes('{{PAGE_PARAM}}')) {
+  await browser.close();
+  throw new ScraperError(
+    `Paginación activa pero la URL no contiene el comodín {{PAGE_PARAM}}. URL actual: "${task.targetUrl}"`,
+    'CONFIG_ERROR'
+  );
+}
+```
+
+**Hallazgo durante pruebas — comportamiento real de Stealth:**
+Al probar `BLOCKED` con LinkedIn y Facebook, ambos sitios NO redirigieron a login. El motor llegó a las páginas reales. Esto confirma que Stealth funciona contra los detectores anti-bot de primer nivel de esas plataformas.
+
+Los errores fueron `SELECTOR_NOT_FOUND` (no `BLOCKED`) porque:
+- Los selectores CSS provistos estaban desactualizados
+- El contenido carga de forma asíncrona después del timeout de `waitForSelector`
+
+`BLOCKED` aparecerá en sitios con sistemas anti-bot más agresivos o con CAPTCHA avanzado que Stealth no puede evadir.
+
+**Archivos modificados:**
+- `scraper-backend/services/scraperEngine.js` — validación CONFIG_ERROR movida al inicio, eliminación de detección duplicada post-navegación
+
+---
+
+## Pendiente / Roadmap
+
+### Completado en Track A (v2.0-v2.1)
+- ✅ Clasificación específica de errores (SELECTOR_NOT_FOUND, NETWORK_ERROR, BLOCKED, TIMEOUT, CONFIG_ERROR)
+- ✅ Graceful shutdown SIGTERM/SIGINT
+- ✅ Exportación CSV/JSON desde data-viewer
+- ✅ Panel de diagnóstico de error en tarjetas de tarea
+
+### Track B — Diferenciación OSINT/Ciberseguridad (próximo)
+- Motor de detección de cambios (diff entre extracción actual y anterior)
+- Campo "categoría" en las tareas para clasificar por tipo de monitoreo
+- Alertas configurables cuando se detecta un cambio o N fallos consecutivos
+- Dashboard de cambios detectados separado del visor de datos raw
+
+### Fase 4 — Escalabilidad
+- **Cola de trabajos con BullMQ + Redis** — desacoplar el scheduler del servidor HTTP
+- **Supabase Realtime** — actualizaciones en tiempo real en data-viewer
 - **Autenticación** — proteger la API con JWT o API keys
 - **Tests** — `supertest` para rutas del backend, `jest` para el motor de scraping
 - **Validación de body con Zod** — reemplazar desestructuración manual por schema validation
-- **Exportación de datos** — CSV/JSON desde `data-viewer`

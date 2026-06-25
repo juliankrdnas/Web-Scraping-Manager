@@ -173,6 +173,16 @@ async function extractFromHtml(task) {
   const allData = [];
   const pagesToScrape = task.isPaginated ? Math.min(task.maxPages, 10) : 1;
 
+  // Validación de configuración antes de lanzar el browser
+  if (task.isPaginated && !task.targetUrl.includes('{{PAGE_PARAM}}')) {
+    await browser.close();
+    throw new ScraperError(
+      `Paginación activa pero la URL no contiene el comodín {{PAGE_PARAM}}. ` +
+      `Añadilo a la URL o desactivá la paginación. URL actual: "${task.targetUrl}"`,
+      'CONFIG_ERROR'
+    );
+  }
+
   try {
     for (let i = 0; i < pagesToScrape; i++) {
       let currentUrl = task.targetUrl;
@@ -182,6 +192,14 @@ async function extractFromHtml(task) {
       }
 
       console.log(`[ScraperEngine] Página ${i + 1}/${pagesToScrape} → ${currentUrl}`);
+
+      // Detectar que el comodín {{PAGE_PARAM}} sigue sin reemplazar ANTES de navegar
+      if (currentUrl.includes('{{PAGE_PARAM}}')) {
+        throw new ScraperError(
+          `La URL contiene el comodín sin reemplazar: "${currentUrl}". Activá la paginación o corregí la URL.`,
+          'CONFIG_ERROR'
+        );
+      }
 
       // Navegación con manejo explícito de errores de red
       try {
@@ -197,6 +215,21 @@ async function extractFromHtml(task) {
 
       const finalUrl = page.url();
       console.log(`[ScraperEngine] URL final: ${finalUrl}`);
+
+      // Detectar respuesta HTTP 404 / 500 via response status
+      const response = await page.evaluate(() => {
+        // Algunos sitios inyectan el status en el meta o título
+        const title = document.title?.toLowerCase() || '';
+        if (title.includes('404') || title.includes('not found') || title.includes('page not found')) return 404;
+        if (title.includes('500') || title.includes('server error')) return 500;
+        return 200;
+      });
+      if (response === 404) {
+        throw new ScraperError(
+          `La página devolvió un error 404 (Not Found). Verificá que la URL sea correcta: ${currentUrl}`,
+          'NETWORK_ERROR'
+        );
+      }
 
       // Detectar redirección a login/captcha
       if (
