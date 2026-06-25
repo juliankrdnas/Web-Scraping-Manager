@@ -204,5 +204,13 @@ mat-paginator { background: transparent !important; margin-top: 0.5rem; }
   mat-icon { font-size: 72px; width: 72px; height: 72px; opacity: 0.2; margin-bottom: 0.5rem; }
   h2 { margin: 0; font-size: 1.4rem; color: var(--text-primary); }
   p  { margin: 0; max-width: 400px; }
-  button { border-radius: 12px !important; gap: 6px; margin-top: 0.5rem; }
+  button {
+    border-radius: 12px !important;
+    gap: 6px;
+    margin-top: 0.5rem;
+    color: #ffffff !important;
+
+    ::ng-deep .mat-icon,
+    ::ng-deep .mdc-button__label { color: #ffffff !important; }
+  }
 }
