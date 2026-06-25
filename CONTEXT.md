@@ -306,6 +306,91 @@ Solución en dos partes:
 
 ---
 
+### v1.9 — Fixes de producción: node-cron, Chromium en Render, CDK overlay
+**Commits:** múltiples fixes post-deploy
+
+**Fix 1 — `job.destroy is not a function` al editar tareas:**
+En `node-cron` v3 el método para detener un job cambió de `.destroy()` a `.stop()`.
+Cualquier operación de editar, desactivar o eliminar una tarea lanzaba este error.
+
+```js
+// Antes
+job.destroy();
+// Ahora
+job.stop();
+```
+Archivo: `scraper-backend/server.js` → función `removeScheduledTask`
+
+**Fix 2 — Chromium no encontrado en Render (producción):**
+Render descarga Chromium durante el build pero ese cache no persiste entre
+reinicios del servidor en el tier gratuito. Cuando el servidor dormía y despertaba,
+Chromium desaparecía.
+
+Solución: `ensureChromium()` al arrancar el servidor — verifica si el ejecutable
+existe y lo descarga si no:
+```js
+function ensureChromium() {
+  try {
+    require('puppeteer').executablePath();
+    console.log('[Chromium] Ejecutable encontrado.');
+  } catch {
+    execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+  }
+}
+ensureChromium();
+```
+Durante este proceso se introdujo accidentalmente una declaración duplicada de
+`const app = express()` que se corrigió en el commit siguiente.
+
+**Fix 3 — Dropdown de mat-select aparecía al fondo/arriba de la pantalla:**
+Este fue el bug más complejo del proyecto. Diagnóstico paso a paso via DevTools:
+
+Síntoma: el panel de opciones del `mat-select` en data-viewer aparecía en una
+posición incorrecta (primero al final, luego arriba) en lugar de debajo del campo.
+
+Diagnóstico con `getComputedStyle`:
+- `.cdk-overlay-container` → `position: static` (debería ser `fixed`)
+- `.cdk-overlay-pane` → `position: static` (debería ser `absolute`)
+- `.cdk-overlay-backdrop` → `position: static` (debería ser `fixed`)
+
+Causa raíz: el reset CSS global `*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }` en `styles.scss` tiene especificidad 0-0-0, igual que las clases `.cdk-overlay-*` de Angular Material. Como el reset se bundlea DESPUÉS del CSS del CDK en el archivo final `styles.css`, termina pisando el `position` de todos los elementos del CDK overlay.
+
+Solución en `styles.scss` — restaurar explícitamente `position` en cada clase CDK:
+```scss
+.cdk-overlay-container,
+.cdk-global-overlay-wrapper {
+  position: fixed !important;
+  top: 0 !important; left: 0 !important;
+  pointer-events: none; z-index: 1000;
+}
+.cdk-overlay-container     { width: 100vw; height: 100vh; }
+.cdk-overlay-connected-position-bounding-box { position: absolute !important; pointer-events: none; }
+.cdk-overlay-pane          { position: absolute !important; pointer-events: auto; }
+.cdk-overlay-backdrop      { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; pointer-events: auto; }
+.cdk-visually-hidden       { position: absolute !important; }
+```
+
+Intentos fallidos durante el diagnóstico (documentados para referencia futura):
+- Mover `mat-select` fuera del `mat-card` (no era el problema)
+- Agregar `disableOptionCentering` al select (no era el problema)
+- Quitar `backdrop-filter` del toolbar (no era el problema)
+- Agregar `::before` pseudo-elemento al toolbar (empeoró)
+- Forzar `width/height: 100%` en el container sin `position: fixed` en el pane (panel en y:0)
+
+**Fix 4 — Mejoras visuales en data-viewer:**
+- Campo selector de tarea agrandado con `::ng-deep` (height: 64px, mismo patrón que task-manager)
+- Label en reposo con `padding-left: 40px` para no solaparse con el ícono prefix
+- Botón "Crear mi primera tarea" con texto invisible arreglado — forzado `color: #ffffff` con `::ng-deep`
+
+**Archivos modificados:**
+- `scraper-backend/server.js` — `job.stop()`, `ensureChromium()`, fix duplicate declarations
+- `scraper-frontend/src/styles.scss` — fix CDK overlay positioning
+- `scraper-frontend/src/app/features/data-viewer/data-viewer.component.scss` — campo selector agrandado, botón texto blanco
+- `scraper-frontend/src/app/features/data-viewer/data-viewer.component.html` — `panelClass`, `disableOptionCentering`, refactor a `selector-wrapper`
+- `scraper-frontend/src/app/app.component.ts` — remoción de `backdrop-filter` del toolbar (fix provisional, causa descartada)
+
+---
+
 ## Decisiones de Diseño
 
 | Decisión | Alternativa descartada | Motivo |

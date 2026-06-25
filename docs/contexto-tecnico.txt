@@ -636,3 +636,124 @@ Por qué Netlify para este proyecto:
 ================================================================================
   FIN DEL DOCUMENTO (ACTUALIZADO)
 ================================================================================
+
+================================================================================
+  17. CDK OVERLAY Y EL PROBLEMA DEL RESET CSS GLOBAL
+================================================================================
+
+Este concepto surgió de uno de los bugs más complejos del proyecto y vale la
+pena documentarlo en detalle porque puede repetirse en cualquier proyecto Angular.
+
+¿Qué es el CDK Overlay?
+  El Angular CDK (Component Development Kit) incluye un sistema de "overlays":
+  capas que se renderizan encima del contenido principal. Los dropdowns, tooltips,
+  modales, y menús de Angular Material usan este sistema.
+
+  El CDK crea dinámicamente en el DOM estos elementos:
+  - .cdk-overlay-container  → contenedor raíz, hijo directo del <body>
+  - .cdk-overlay-pane       → el panel que contiene el dropdown/modal
+  - .cdk-overlay-backdrop   → capa transparente que captura clicks afuera
+  - .cdk-overlay-connected-position-bounding-box → define el área donde
+                               el pane puede posicionarse
+
+  Para funcionar correctamente:
+  - .cdk-overlay-container debe tener position: fixed, top: 0, left: 0
+  - .cdk-overlay-pane debe tener position: absolute
+  - .cdk-overlay-backdrop debe tener position: fixed
+
+El problema con el reset CSS:
+  Un patrón muy común en CSS es el reset universal:
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  El selector * tiene especificidad 0-0-0, la más baja posible.
+  Las clases como .cdk-overlay-container también tienen especificidad 0-1-0.
+  Las clases deberían ganar.
+
+  PERO: en Angular con el nuevo builder (esbuild), todos los estilos se
+  bundlean en un solo archivo styles.css. El orden en que las reglas
+  aparecen en ese archivo determina cuál gana cuando hay igual especificidad.
+  Si el reset CSS del proyecto aparece DESPUÉS del CSS del CDK en el bundle,
+  el reset pisa el position de los elementos del CDK.
+
+  Esto hace que position: fixed/absolute del CDK sea sobreescrito por
+  la ausencia de position en el reset (que resulta en position: static).
+
+Síntomas:
+  - El dropdown de mat-select aparece en una posición incorrecta
+    (arriba, abajo, o al final de la página en lugar de debajo del campo)
+  - Los tooltips aparecen en coordenadas incorrectas
+  - Los modales no se centran correctamente
+  - Al diagnosticar con getComputedStyle, los elementos .cdk-overlay-*
+    muestran position: static en lugar de fixed/absolute
+
+Diagnóstico:
+  Abrir DevTools → Console y ejecutar:
+    window.getComputedStyle(document.querySelector('.cdk-overlay-container')).position
+  Si devuelve 'static' en lugar de 'fixed', el reset está pisando el CDK.
+
+Solución:
+  Agregar en styles.scss (después del reset) las reglas que restauran
+  explícitamente el position de cada elemento del CDK con !important:
+
+    .cdk-overlay-container, .cdk-global-overlay-wrapper {
+      position: fixed !important; top: 0 !important; left: 0 !important;
+    }
+    .cdk-overlay-container { width: 100vw; height: 100vh; }
+    .cdk-overlay-connected-position-bounding-box { position: absolute !important; }
+    .cdk-overlay-pane { position: absolute !important; pointer-events: auto; }
+    .cdk-overlay-backdrop { position: fixed !important; top: 0 !important;
+      left: 0 !important; width: 100% !important; height: 100% !important; }
+    .cdk-visually-hidden { position: absolute !important; }
+
+Por qué esto no es un bug de Angular Material:
+  Angular Material asume que el CSS del CDK se cargará sin interferencia.
+  El reset CSS es una decisión del proyecto, no del framework. La solución
+  correcta es que el proyecto restaure los estilos que necesita el CDK.
+
+--------------------------------------------------------------------------------
+18. TIER GRATUITO DE RENDER Y LA PERSISTENCIA DE ARCHIVOS
+--------------------------------------------------------------------------------
+
+Render en el tier gratuito tiene una limitación importante:
+
+  El sistema de archivos es EFÍMERO — no persiste entre reinicios.
+  Cuando el servidor "duerme" (15 min sin tráfico) y luego despierta,
+  el proceso Node.js se reinicia desde cero.
+
+Consecuencias para Puppeteer:
+  Puppeteer descarga Chromium durante el build y lo guarda en el cache:
+    /opt/render/.cache/puppeteer/chrome/...
+
+  Cuando el servidor duerme y despierta, ese directorio puede no existir
+  en el nuevo proceso, causando el error:
+    "Could not find Chrome (ver. X.X.X.X)"
+
+Solución implementada en este proyecto:
+  La función ensureChromium() en server.js verifica al arrancar si el
+  ejecutable existe. Si no, lo descarga antes de iniciar el servidor:
+
+    function ensureChromium() {
+      try {
+        require('puppeteer').executablePath();
+      } catch {
+        execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+      }
+    }
+    ensureChromium(); // Se llama antes de cualquier otra inicialización
+
+  Esto agrega ~30-60 segundos al tiempo de arranque cuando Chromium
+  no está disponible, pero garantiza que el scraping siempre funcione.
+
+Implicación para el scheduler (node-cron):
+  Cuando el servidor duerme, los cron jobs en memoria también se pierden.
+  Al despertar, initCronScheduler() recarga todas las tareas activas desde
+  MongoDB y las reprograma. Esto es correcto para tareas con intervalos
+  largos (horas), pero puede causar ejecuciones perdidas para tareas con
+  intervalos cortos (minutos) si el servidor estaba dormido.
+
+  Para uso productivo con cron jobs frecuentes, el tier Starter de Render
+  ($7/mes) mantiene el servidor siempre activo.
+
+================================================================================
+  FIN DEL DOCUMENTO (ACTUALIZADO v1.9)
+================================================================================
