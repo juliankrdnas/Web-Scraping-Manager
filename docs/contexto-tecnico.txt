@@ -445,3 +445,194 @@ Por qué NO es necesario migrar a Supabase para el despliegue:
 ================================================================================
   FIN DEL DOCUMENTO
 ================================================================================
+
+================================================================================
+  13. FLEXIBILIDAD NoSQL Y POR QUÉ ES IDEAL PARA WEB SCRAPING
+================================================================================
+
+Para entender la ventaja de NoSQL en scraping, primero hay que entender
+la diferencia fundamental entre los dos modelos de bases de datos.
+
+SQL (Bases de datos relacionales — PostgreSQL, MySQL):
+  Los datos se guardan en tablas con columnas fijas definidas de antemano.
+  Si querés guardar un producto con "nombre" y "precio", creás una tabla con
+  exactamente esas dos columnas. Si mañana querés agregar "descripción",
+  tenés que alterar la tabla con un comando ALTER TABLE — una operación que
+  puede ser costosa y requiere planificación.
+
+  Ejemplo de tabla SQL para productos:
+    | id | nombre         | precio |
+    |----|----------------|--------|
+    | 1  | Laptop HP      | 1200   |
+    | 2  | Mouse Logitech | 45     |
+
+NoSQL — Documentos (MongoDB):
+  Los datos se guardan como documentos JSON independientes. Cada documento
+  puede tener una estructura completamente diferente. No hay esquema fijo.
+
+  Ejemplo de documentos MongoDB para el mismo caso:
+    { "nombre": "Laptop HP", "precio": 1200 }
+    { "nombre": "Mouse Logitech", "precio": 45, "color": "negro", "inalambrico": true }
+    { "nombre": "Monitor LG", "precio": 350, "pulgadas": 27, "resolucion": "4K" }
+
+  El tercer documento tiene campos completamente distintos a los primeros dos.
+  En SQL eso requeriría columnas separadas con muchos NULL. En MongoDB es natural.
+
+Por qué esto importa especialmente para web scraping:
+
+  El problema central del scraping es que CADA SITIO WEB tiene una estructura
+  de datos diferente:
+
+  - Un sitio de motos tiene: marca, modelo, cilindraje, año, precio, km
+  - Un sitio de libros tiene: título, autor, ISBN, género, páginas, editorial
+  - Un sitio de noticias tiene: titular, fecha, categoría, autor, resumen
+  - Un sitio de empleos tiene: cargo, empresa, salario, modalidad, ciudad
+
+  En SQL tendrías que crear una tabla diferente por cada tipo de sitio, o una
+  tabla genérica con decenas de columnas donde la mayoría quedarían vacías.
+
+  Con MongoDB, cada resultado de scraping se guarda como un documento que
+  contiene exactamente los campos que se extrajeron, sin desperdiciar espacio
+  ni requerir cambios de schema.
+
+  En este proyecto se usa un modelo simplificado donde cada valor extraído
+  se guarda como un string independiente. Pero la arquitectura está preparada
+  para evolucionar: si en el futuro se quiere extraer objetos complejos
+  (nombre + precio + URL de imagen del mismo producto), MongoDB lo acepta
+  sin cambios al schema.
+
+Comparación directa para scraping de 3 sitios distintos:
+
+  Con SQL:
+    - Crear tabla_motos: marca, modelo, precio, año, km
+    - Crear tabla_libros: titulo, autor, precio, isbn
+    - Crear tabla_noticias: titulo, fecha, categoria
+    - Cada nuevo sitio requiere una nueva tabla y código específico
+    - Cruzar datos entre sitios es complejo
+
+  Con MongoDB:
+    - Una sola colección "scraped_data" guarda todo
+    - Cada documento tiene los campos que correspondan a ese scraping
+    - Agregar un nuevo tipo de sitio no requiere cambios en la base de datos
+    - Toda la flexibilidad queda en la lógica del scraper, no en el schema
+
+El campo "extractedValue" en este proyecto:
+  Actualmente ScrapedData guarda cada resultado como un string simple.
+  Eso cubre el 80% de los casos (precios, títulos, textos).
+  Gracias a MongoDB, cuando se necesite guardar objetos más complejos,
+  solo hay que cambiar el tipo del campo de String a Mixed o Object —
+  sin migraciones, sin downtime, sin ALTER TABLE.
+
+Cuándo SÍ conviene PostgreSQL para scraping:
+  - Cuando los datos tienen estructura muy consistente y predecible
+  - Cuando se necesitan reportes SQL complejos sobre los datos extraídos
+  - Cuando se requiere integridad referencial estricta
+  - PostgreSQL con columna JSONB ofrece un híbrido: tabla relacional con
+    una columna que acepta JSON flexible — lo mejor de ambos mundos.
+
+--------------------------------------------------------------------------------
+14. SPA, ROUTING DEL LADO DEL CLIENTE Y EL PROBLEMA DEL REFRESCO
+--------------------------------------------------------------------------------
+
+Routing del lado del servidor (tradicional):
+  En una aplicación web tradicional, cada URL corresponde a un archivo en
+  el servidor. Cuando el usuario visita /contacto, el servidor devuelve
+  contacto.html. El servidor maneja cada ruta.
+
+Routing del lado del cliente (SPA):
+  En Angular (y React, Vue, etc.), hay un solo archivo index.html.
+  Cuando Angular arranca en el browser, toma el control de la navegación.
+  Al navegar a /tasks, Angular intercepta el click, no va al servidor,
+  y renderiza el componente TaskManagerComponent localmente.
+  La URL en la barra del browser cambia, pero no hay request al servidor.
+
+El problema del refresco (hard refresh):
+  Cuando el usuario recarga la página (F5) estando en /tasks, el browser
+  sí hace un request al servidor pidiendo literalmente "/tasks".
+  El servidor de Netlify busca un archivo "tasks" → no existe → 404.
+
+  Esto ocurre también cuando:
+  - El usuario escribe la URL directamente en la barra del browser
+  - Se comparte un link directo a una sección de la app
+
+La solución — archivo _redirects de Netlify:
+
+    Archivo: _redirects
+    Contenido: /*    /index.html   200
+
+  Esto le indica a Netlify: para cualquier URL (/*), devolvé index.html
+  con código HTTP 200 (OK). Angular arranca, lee la URL actual, y renderiza
+  la vista correcta.
+
+  El código 200 es importante: si se usara 301 o 302 (redirecciones),
+  el browser cambiaría la URL a "/" perdiendo la ruta original.
+  Con 200, la URL permanece igual y Angular la procesa correctamente.
+
+Dónde debe estar _redirects:
+  Debe estar en la RAÍZ del directorio que Netlify publica
+  (dist/scraper-frontend/browser/). Como ese directorio se regenera en cada
+  build, el archivo se pone en scraper-frontend/public/ y se configura
+  angular.json para copiarlo automáticamente:
+
+    "assets": [
+      { "glob": "_redirects", "input": "public", "output": "." }
+    ]
+
+--------------------------------------------------------------------------------
+15. CORS EN PRODUCCIÓN
+--------------------------------------------------------------------------------
+
+CORS (Cross-Origin Resource Sharing) es un mecanismo de seguridad del browser
+que bloquea peticiones HTTP entre orígenes diferentes.
+
+Un "origen" es: protocolo + dominio + puerto.
+  - https://datavore.netlify.app   → un origen
+  - https://web-scraping-manager-api.onrender.com → otro origen
+
+En producción, frontend y backend están en dominios distintos. El browser
+verifica que el backend permita requests desde el dominio del frontend.
+
+  Si ALLOWED_ORIGIN en Render no incluye el dominio de Netlify, el browser
+  bloquea la respuesta y la app no puede cargar datos.
+
+Configuración en este proyecto:
+  app.use(cors({ origin: process.env.ALLOWED_ORIGIN }));
+
+  En producción: ALLOWED_ORIGIN = https://datavore.netlify.app
+
+  Esto hace que el backend incluya en sus respuestas:
+    Access-Control-Allow-Origin: https://datavore.netlify.app
+
+Por qué no usar * en producción:
+  Con * cualquier sitio web puede hacer requests a la API. Restringirlo
+  al dominio propio elimina ese vector de abuso.
+
+--------------------------------------------------------------------------------
+16. NETLIFY VS VERCEL VS GITHUB PAGES PARA ANGULAR
+--------------------------------------------------------------------------------
+
+GitHub Pages:
+  - Gratuito, integrado con GitHub
+  - NO soporta SPAs con routing del lado del cliente nativamente
+  - Requiere hash routing en Angular (#/tasks en lugar de /tasks)
+  - Ideal para sitios estáticos simples, no para aplicaciones con routing
+
+Vercel:
+  - Muy popular en proyectos React/Next.js
+  - Soporta SPAs con configuración mínima
+  - Funciona bien con Angular pero sin ventajas específicas sobre Netlify
+
+Netlify:
+  - Soporte explícito para SPAs mediante el archivo _redirects
+  - Deploy automático desde GitHub en cada push
+  - Preview deploys: URL temporal para cada Pull Request
+  - Tier gratuito: 100GB de bandwidth, builds ilimitados
+
+Por qué Netlify para este proyecto:
+  El soporte nativo para SPAs via _redirects, la simplicidad del deploy
+  desde GitHub y el tier gratuito lo hacen la opción más directa para
+  un frontend Angular en producción.
+
+================================================================================
+  FIN DEL DOCUMENTO (ACTUALIZADO)
+================================================================================

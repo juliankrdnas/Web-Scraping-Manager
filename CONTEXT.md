@@ -272,6 +272,40 @@ Solución: actualizar los budgets en `angular.json`:
 
 ---
 
+### v1.8 — Guía de deploy frontend, fix SPA routing y documentación ampliada
+**Commits:** `fix: add Netlify _redirects for SPA client-side routing` · `fix: include _redirects in Angular build output for Netlify SPA routing` · `docs: add frontend deploy guide, expand technical context`
+
+**Problema resuelto — 404 al recargar en Netlify:**
+Al recargar cualquier ruta (ej: `/tasks`), Netlify buscaba un archivo físico
+que no existe y devolvía 404. Causa: Angular maneja el routing del lado del
+cliente (SPA), pero el servidor no sabe eso.
+
+Solución en dos partes:
+1. Crear `scraper-frontend/public/_redirects` con el contenido:
+   `/*    /index.html   200`
+2. Agregar entrada en `angular.json` para copiar el archivo al output del build:
+   ```json
+   { "glob": "_redirects", "input": "public", "output": "." }
+   ```
+
+**Archivos creados:**
+- `docs/deploy-frontend-netlify.txt` — guía completa para deployar el frontend:
+  concepto de SPA y el problema del refresco, verificación de archivos previos,
+  configuración en Netlify (base directory, build command, publish directory),
+  configuración de CORS en Render post-deploy, deploy automático, y troubleshooting
+
+**Documentación ampliada en `docs/contexto-tecnico.txt`:**
+- Sección 13: Flexibilidad NoSQL vs SQL para web scraping — comparación directa,
+  por qué MongoDB es ideal cuando cada sitio tiene estructura diferente, cuándo
+  sí conviene PostgreSQL (JSONB)
+- Sección 14: SPA, routing del lado del cliente y el problema del refresco —
+  por qué F5 da 404 en Netlify, cómo funciona _redirects y por qué el código
+  200 (no 301) es importante
+- Sección 15: CORS en producción — qué es un origen, configuración en Render
+- Sección 16: Netlify vs Vercel vs GitHub Pages para Angular
+
+---
+
 ## Decisiones de Diseño
 
 | Decisión | Alternativa descartada | Motivo |

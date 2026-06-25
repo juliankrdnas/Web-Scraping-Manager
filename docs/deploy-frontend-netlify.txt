@@ -1,0 +1,272 @@
+================================================================================
+  GUÍA DE DESPLIEGUE — FRONTEND EN NETLIFY
+  (Angular 17 SPA → Netlify.com)
+================================================================================
+
+ARQUITECTURA DE DESTINO
+------------------------
+  Frontend   → Netlify      (este documento)
+  Backend    → Render.com   (ver docs/deploy-backend-render.txt)
+  Base datos → MongoDB Atlas (sin cambios)
+
+URLs de producción del proyecto:
+  Frontend:  https://datavore.netlify.app
+  Backend:   https://web-scraping-manager-api.onrender.com
+
+PREREQUISITOS
+-------------
+  - Cuenta en GitHub con el repositorio ya configurado
+  - Backend deployado en Render con su URL pública disponible
+     (el frontend necesita esa URL para apuntar a la API en producción)
+  - El archivo environment.prod.ts debe tener la URL real del backend:
+      export const environment = {
+        production: true,
+        apiUrl: 'https://[tu-servicio].onrender.com/api',
+      };
+
+================================================================================
+  CONCEPTO CLAVE: QUÉ ES UNA SPA Y POR QUÉ NETLIFY NECESITA CONFIGURACIÓN
+================================================================================
+
+Una SPA (Single Page Application) es una aplicación web que carga una sola vez
+y luego maneja la navegación internamente mediante JavaScript, sin recargar la
+página en el servidor.
+
+Cuando Angular compila el proyecto con "ng build", genera un conjunto de archivos
+estáticos: index.html, main.js, polyfills.js, styles.css. Netlify sirve esos
+archivos desde un CDN global.
+
+El problema con el refresco de página:
+  Cuando el usuario visita https://datavore.netlify.app/tasks, el browser
+  hace una petición al servidor de Netlify pidiendo el archivo "/tasks".
+  Netlify busca ese archivo en el disco → no existe → devuelve 404.
+
+  Esto pasa porque en una SPA el routing lo maneja Angular (JavaScript en el
+  browser), no el servidor. El servidor solo debería entregar index.html para
+  CUALQUIER ruta, y dejar que Angular decida qué mostrar.
+
+La solución: el archivo _redirects
+  Netlify soporta un archivo especial llamado "_redirects" que define reglas
+  de redirección. La regla para SPAs es:
+
+    /*    /index.html   200
+
+  Esto le dice a Netlify: "para cualquier URL (/*), devolvé index.html con
+  código 200 (éxito)". Angular arranca, lee la URL, y renderiza la vista
+  correcta. El usuario no nota nada.
+
+  Este archivo debe estar en la raíz del directorio publicado (junto a index.html).
+  En este proyecto está en scraper-frontend/public/_redirects y el angular.json
+  está configurado para copiarlo al output del build automáticamente.
+
+================================================================================
+  PASO 1: VERIFICAR LOS ARCHIVOS DE CONFIGURACIÓN
+================================================================================
+
+Antes de deployar, confirmar que estos archivos existen en el repositorio:
+
+--- 1.1 scraper-frontend/public/_redirects ---
+
+Contenido:
+  /*    /index.html   200
+
+Este archivo es copiado automáticamente a la raíz del build por Angular.
+Sin él, recargar cualquier ruta que no sea "/" devuelve 404.
+
+--- 1.2 scraper-frontend/angular.json — sección assets ---
+
+Debe incluir la entrada para copiar _redirects:
+
+  "assets": [
+    "src/favicon.ico",
+    "src/assets",
+    {
+      "glob": "_redirects",
+      "input": "public",
+      "output": "."
+    }
+  ]
+
+--- 1.3 scraper-frontend/src/environments/environment.prod.ts ---
+
+Debe tener la URL real del backend en Render:
+
+  export const environment = {
+    production: true,
+    apiUrl: 'https://web-scraping-manager-api.onrender.com/api',
+  };
+
+Si alguno de estos archivos no está correcto, hacer commit y push antes de
+continuar con el deploy.
+
+================================================================================
+  PASO 2: CREAR LA CUENTA EN NETLIFY Y CONECTAR EL REPOSITORIO
+================================================================================
+
+  1. Ir a https://netlify.com
+  2. Click en "Sign up" → registrarse con GitHub (recomendado para simplificar
+     la conexión con el repositorio)
+  3. Una vez en el dashboard, click en "Add new site" → "Import an existing project"
+  4. Seleccionar "GitHub" como proveedor
+  5. Autorizar a Netlify a acceder a los repositorios si es la primera vez
+  6. Buscar y seleccionar el repositorio: Web-Scraping-Manager
+
+================================================================================
+  PASO 3: CONFIGURAR EL BUILD EN NETLIFY
+================================================================================
+
+Netlify mostrará una pantalla de configuración del deploy. Completar así:
+
+  ┌─────────────────────────┬────────────────────────────────────────────────┐
+  │ Campo                   │ Valor                                          │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ Branch to deploy        │ master                                         │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ Base directory          │ scraper-frontend                               │
+  │                         │ (IMPORTANTE: esto le dice a Netlify que el     │
+  │                         │  código del frontend está en esa subcarpeta,   │
+  │                         │  no en la raíz del repositorio)                │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ Build command           │ npm run build                                  │
+  │                         │ (ejecuta ng build con configuración            │
+  │                         │  production por defecto, usando                │
+  │                         │  environment.prod.ts automáticamente)          │
+  ├─────────────────────────┼────────────────────────────────────────────────┤
+  │ Publish directory       │ dist/scraper-frontend/browser                  │
+  │                         │ (donde Angular genera los archivos finales)    │
+  └─────────────────────────┴────────────────────────────────────────────────┘
+
+  Click en "Deploy site"
+
+  El primer build tarda entre 1 y 3 minutos. Netlify instalará las dependencias
+  de npm y compilará Angular con optimizaciones de producción (minificación,
+  tree-shaking, hashing de archivos).
+
+================================================================================
+  PASO 4: VERIFICAR EL DEPLOY
+================================================================================
+
+--- 4.1 Monitorear los logs ---
+
+  En el dashboard de Netlify, click en el deploy en progreso para ver los logs.
+  Un build exitoso termina con algo así:
+
+    ✓ Building...
+    Application bundle generation complete.
+    ─────────────────────────────────────────────
+    ✓ Deploy complete
+    Site is live at: https://[nombre].netlify.app
+
+--- 4.2 Probar la navegación y el refresco ---
+
+  Una vez deployado, hacer estas pruebas:
+
+  a) Abrir https://[tu-sitio].netlify.app → debe cargar la app
+  b) Navegar a la sección "Datos" → debe funcionar
+  c) Recargar la página (F5 o Ctrl+R) → NO debe aparecer 404
+     Si aparece 404, el archivo _redirects no está en el output (ver Paso 1)
+  d) Escribir directamente en la barra: https://[tu-sitio].netlify.app/data
+     → debe cargar la app correctamente
+
+--- 4.3 Verificar que el frontend habla con el backend ---
+
+  En la app abierta, revisar si las tareas cargan. Si aparece un error de
+  conexión, puede ser un problema de CORS (ver Paso 5).
+
+================================================================================
+  PASO 5: CONFIGURAR CORS EN EL BACKEND (RENDER)
+================================================================================
+
+Una vez que Netlify asigna la URL del sitio, hay que actualizar la variable
+ALLOWED_ORIGIN en Render para permitir requests desde ese dominio.
+
+  1. Ir a https://render.com → tu servicio web-scraping-manager-api
+  2. Click en "Environment" en el menú del servicio
+  3. Buscar la variable ALLOWED_ORIGIN
+  4. Cambiar el valor a la URL exacta de Netlify:
+     https://[tu-sitio].netlify.app
+     (sin barra al final, con https://)
+  5. Click "Save Changes"
+  6. Render hace un redeploy automático con el nuevo valor
+
+  Por qué importa:
+  Con ALLOWED_ORIGIN=* cualquier sitio web puede hacer requests a la API.
+  Restringirlo al dominio de Netlify es una medida de seguridad básica.
+
+================================================================================
+  PASO 6: DEPLOY AUTOMÁTICO EN FUTUROS CAMBIOS
+================================================================================
+
+Netlify queda configurado para hacer deploy automático cada vez que se hace
+push a la rama "master" del repositorio. No es necesario hacer nada manual.
+
+El flujo de trabajo para actualizar la app en producción es:
+  1. Hacer cambios en el código localmente
+  2. git add . && git commit -m "descripción" && git push
+  3. Netlify detecta el nuevo commit y lanza un nuevo build automáticamente
+  4. En 1-3 minutos los cambios están en producción
+
+Para ver el historial de deploys:
+  Dashboard de Netlify → tu sitio → pestaña "Deploys"
+
+Para forzar un nuevo deploy sin cambios de código:
+  Dashboard → Deploys → "Trigger deploy" → "Deploy site"
+
+================================================================================
+  TROUBLESHOOTING — PROBLEMAS COMUNES
+================================================================================
+
+Problema: 404 al recargar cualquier ruta que no sea "/"
+  Causa:    El archivo _redirects no está en el directorio publicado
+  Solución:
+    1. Verificar que public/_redirects existe en scraper-frontend/
+    2. Verificar que angular.json tiene la entrada de assets para _redirects
+    3. Hacer un nuevo deploy: Netlify → Deploys → Trigger deploy
+    4. Después del deploy, ir a Deploys → click en el deploy → "Browse"
+       y confirmar que _redirects aparece en la raíz junto a index.html
+
+Problema: La app carga pero no trae datos (error de red en consola)
+  Causa A:  CORS no configurado — ALLOWED_ORIGIN en Render no incluye el
+            dominio de Netlify
+  Solución: Actualizar ALLOWED_ORIGIN en Render (ver Paso 5)
+
+  Causa B:  El backend en Render está "dormido" (tier gratuito)
+  Solución: El primer request después de 15 min de inactividad tarda ~30s
+            en despertar el servidor. Esperar y reintentar.
+
+Problema: Build falla con "budget exceeded"
+  Causa:    Los archivos CSS o JS superan los límites configurados en angular.json
+  Solución: Aumentar los budgets en angular.json:
+    "budgets": [
+      { "type": "initial", "maximumWarning": "800kb", "maximumError": "2mb" },
+      { "type": "anyComponentStyle", "maximumWarning": "6kb", "maximumError": "10kb" }
+    ]
+
+Problema: Build falla con "ng: not found" o similar
+  Causa:    Netlify no encontró Angular CLI
+  Solución: Verificar que el "Base directory" está configurado como
+            "scraper-frontend" en la configuración del sitio en Netlify
+
+Problema: Los cambios en el código no se reflejan en producción
+  Causa:    Netlify puede estar cacheando assets del build anterior
+  Solución: Dashboard → Deploys → "Trigger deploy" → "Clear cache and deploy site"
+
+================================================================================
+  RESUMEN RÁPIDO
+================================================================================
+
+  1. Verificar public/_redirects y angular.json (assets con _redirects)
+  2. Verificar environment.prod.ts con la URL del backend en Render
+  3. Commit y push de cualquier cambio pendiente
+  4. En Netlify → Add new site → GitHub → Web-Scraping-Manager
+  5. Configurar:
+       Base directory:    scraper-frontend
+       Build command:     npm run build
+       Publish directory: dist/scraper-frontend/browser
+  6. Deploy site → esperar 1-3 minutos
+  7. Probar refresco de página (no debe dar 404)
+  8. Actualizar ALLOWED_ORIGIN en Render con la URL de Netlify
+
+================================================================================
+  FIN DEL DOCUMENTO
+================================================================================
