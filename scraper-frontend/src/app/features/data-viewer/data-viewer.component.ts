@@ -113,6 +113,11 @@ export class DataViewerComponent implements OnInit {
     return this.tasks.find((t) => t._id === this.selectedTaskId)?.name ?? '';
   }
 
+  exportData(format: 'json' | 'csv'): void {
+    if (!this.selectedTaskId) return;
+    this.api.exportData(this.selectedTaskId, format);
+  }
+
   copyValue(value: string): void {
     navigator.clipboard.writeText(value);
     this.snack.open('Valor copiado.', '✕', { duration: 2000 });

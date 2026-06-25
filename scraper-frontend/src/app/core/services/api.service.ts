@@ -12,6 +12,8 @@ export interface Task {
   isActive: boolean;
   lastRun?: string;
   lastStatus?: 'success' | 'error' | 'pending' | 'never';
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
   createdAt?: string;
   updatedAt?: string;
   // Paginación dinámica
@@ -75,5 +77,11 @@ export class ApiService {
       .set('page', page.toString())
       .set('limit', limit.toString());
     return this.http.get<PaginatedData>(`${this.baseUrl}/data/${taskId}`, { params });
+  }
+
+  exportData(taskId: string, format: 'json' | 'csv'): void {
+    const url = `${this.baseUrl}/data/${taskId}/export?format=${format}`;
+    // Abrir en nueva pestaña dispara la descarga directamente desde el backend
+    window.open(url, '_blank');
   }
 }

@@ -757,3 +757,212 @@ Implicación para el scheduler (node-cron):
 ================================================================================
   FIN DEL DOCUMENTO (ACTUALIZADO v1.9)
 ================================================================================
+
+================================================================================
+  19. CLASIFICACIÓN DE ERRORES EN SCRAPERS — PATRÓN ScraperError
+================================================================================
+
+Un problema común en sistemas de scraping es que todos los fallos se tratan
+igual: el scraper devuelve vacío y el sistema registra "error" sin más detalle.
+Esto hace imposible el diagnóstico remoto.
+
+Tipos de error que puede tener un scraper:
+
+  SELECTOR_NOT_FOUND:
+    El selector CSS configurado no aparece en el DOM dentro del tiempo límite.
+    Causa más común: el sitio web actualizó su diseño y cambió los nombres
+    de sus clases CSS o la estructura HTML. Requiere actualizar el selector
+    en la tarea, no es un problema de red ni de bloqueo.
+
+  NETWORK_ERROR:
+    El servidor de destino no respondió o rechazó la conexión.
+    Causas: el sitio está caído, hay un firewall, DNS no resuelve el dominio.
+    Puede ser transitorio (reintento resuelve) o permanente.
+
+  BLOCKED:
+    El sitio detectó el bot y redirigió a una página de login, captcha
+    o verificación de identidad. El scraper llegó al servidor pero fue
+    identificado como bot y no recibió el contenido esperado.
+    Causas: fingerprinting del browser, comportamiento no humano, IP baneada.
+
+  TIMEOUT:
+    La navegación tardó más del tiempo límite configurado (25s en este proyecto).
+    Puede indicar un sitio muy lento o una respuesta parcialmente bloqueada.
+
+  UNKNOWN:
+    Error no clasificado en ninguna categoría anterior.
+
+Implementación en este proyecto:
+
+  class ScraperError extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  }
+
+  function classifyError(error, selector) {
+    const msg = error.message;
+    if (msg.includes('Waiting for selector') || msg.includes('Waiting failed'))
+      return new ScraperError('...', 'SELECTOR_NOT_FOUND');
+    if (msg.includes('Navigation timeout'))
+      return new ScraperError('...', 'TIMEOUT');
+    if (msg.includes('net::ERR_'))
+      return new ScraperError('...', 'NETWORK_ERROR');
+    return new ScraperError(msg, 'UNKNOWN');
+  }
+
+Por qué esta separación importa:
+  - SELECTOR_NOT_FOUND → acción del usuario: revisar el selector CSS
+  - NETWORK_ERROR → acción del sistema: reintentar más tarde
+  - BLOCKED → acción avanzada: rotar IP, mejorar stealth, agregar cookies
+  - TIMEOUT → acción del sistema: aumentar timeout o reintentar
+
+Sin esta clasificación, el usuario no puede saber por qué falló la tarea
+y si debe cambiar la configuración o simplemente esperar.
+
+--------------------------------------------------------------------------------
+20. GRACEFUL SHUTDOWN EN SERVIDORES NODE.JS
+--------------------------------------------------------------------------------
+
+Un servidor Node.js puede recibir señales del sistema operativo para indicarle
+que debe terminar su ejecución. Si el proceso termina abruptamente sin manejar
+estas señales, pueden quedar recursos sin liberar.
+
+Señales relevantes:
+
+  SIGTERM:
+    Señal estándar de terminación enviada por el sistema operativo o por
+    plataformas cloud (Render, Docker, Kubernetes) antes de detener el proceso.
+    Render la envía antes de cada redeploy para dar tiempo al proceso de
+    cerrar limpiamente.
+
+  SIGINT:
+    Enviada cuando el usuario presiona Ctrl+C en la terminal.
+    Útil en desarrollo para cerrar el servidor limpiamente.
+
+Qué puede salir mal sin graceful shutdown:
+
+  1. Cron jobs en memoria: si el proceso termina mientras un cron job está
+     a punto de ejecutarse o está en ejecución, el estado queda inconsistente.
+     MongoDB puede tener lastStatus='pending' para siempre.
+
+  2. Conexión MongoDB abrupta: Mongoose abre un pool de conexiones TCP.
+     Si el proceso termina sin cerrarlas, MongoDB registra conexiones huérfanas
+     y puede tardar en liberarlas.
+
+  3. Instancias Chromium huérfanas: si Puppeteer está lanzando un browser
+     al momento del shutdown, el proceso de Chromium queda corriendo en
+     segundo plano consumiendo RAM hasta que el SO lo mata.
+
+Implementación en este proyecto:
+
+  async function shutdown(signal) {
+    // 1. Detener todos los cron jobs
+    for (const [taskId, job] of scheduledJobs) {
+      job.stop();
+    }
+    scheduledJobs.clear();
+
+    // 2. Cerrar conexión MongoDB
+    await mongoose.connection.close();
+
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+
+En producción (Render), el flujo de un redeploy ahora es:
+  1. Render envía SIGTERM al proceso actual
+  2. El handler detiene los cron jobs y cierra MongoDB
+  3. El proceso termina con exit(0)
+  4. Render inicia el nuevo proceso con el código actualizado
+
+--------------------------------------------------------------------------------
+21. EXPORTACIÓN DE DATOS: CSV vs JSON Y DESCARGA DESDE BACKEND
+--------------------------------------------------------------------------------
+
+Cuando se exportan datos de un sistema web hay dos enfoques:
+
+Exportar desde el frontend:
+  El frontend carga todos los datos en memoria (haciendo requests paginados),
+  construye el archivo en JavaScript, y usa la API Blob/URL.createObjectURL
+  para disparar la descarga.
+
+  Ventaja: no requiere endpoint adicional en el backend.
+  Desventaja: con miles de registros puede congelar el browser. El frontend
+  tiene que hacer múltiples requests para obtener todos los datos.
+
+Exportar desde el backend (enfoque de este proyecto):
+  El backend genera el archivo completo en un solo request y lo envía con
+  los headers HTTP correctos. El browser recibe la respuesta y la descarga
+  automáticamente.
+
+  Headers necesarios:
+    Content-Type: text/csv  (o application/json)
+    Content-Disposition: attachment; filename="nombre_export.csv"
+
+  El header Content-Disposition con valor "attachment" le indica al browser
+  que debe descargar el archivo en lugar de mostrarlo en pantalla.
+
+  En el frontend, se abre la URL con window.open(url, '_blank'), que dispara
+  la descarga sin navegar fuera de la aplicación.
+
+Formato CSV:
+  CSV (Comma-Separated Values) es el formato más universal para datos tabulares.
+  Compatible con Excel, Google Sheets, y la mayoría de herramientas de análisis.
+
+  Reglas importantes del estándar RFC 4180:
+  - Los valores que contienen comas, comillas o saltos de línea deben ir
+    entre comillas dobles: "valor, con coma"
+  - Las comillas dobles dentro de un valor se escapan duplicándolas: ""
+  - La primera línea es el header con los nombres de columnas
+
+  En este proyecto:
+    header: id,extractedValue,timestamp
+    fila: "id123","Título del libro","2026-06-25T..."
+
+Formato JSON de exportación:
+  El JSON incluye metadatos adicionales además de los datos:
+  - Información de la tarea (nombre, URL, selector)
+  - Fecha y hora de exportación
+  - Total de registros
+  Esta información es útil para auditoría y trazabilidad.
+
+--------------------------------------------------------------------------------
+22. PIPES PERSONALIZADOS EN ANGULAR (STANDALONE)
+--------------------------------------------------------------------------------
+
+Un Pipe en Angular es una función de transformación de datos que se usa
+directamente en los templates HTML con el operador |.
+
+Angular incluye pipes comunes: date, lowercase, uppercase, currency, number.
+Sin embargo no incluye un pipe "replace" para reemplazar texto.
+
+El pipe ReplacePipe creado en este proyecto:
+
+  @Pipe({ name: 'replace', standalone: true })
+  export class ReplacePipe implements PipeTransform {
+    transform(value: string, search: string, replacement: string): string {
+      if (!value) return value;
+      return value.split(search).join(replacement);
+    }
+  }
+
+Uso en template:
+  {{ 'SELECTOR_NOT_FOUND' | lowercase | replace:'_':' ' }}
+  → "selector not found"
+
+Por qué standalone: en Angular 17 los pipes standalone se importan directamente
+en el array imports del componente, sin necesidad de un NgModule:
+
+  imports: [..., ReplacePipe]
+
+Alternativa sin pipe: mover la lógica al componente TypeScript como un método.
+Se prefirió el pipe porque es reutilizable y mantiene la lógica de presentación
+en el template donde conceptualmente pertenece.
+
+================================================================================
+  FIN DEL DOCUMENTO (ACTUALIZADO v2.0)
+================================================================================

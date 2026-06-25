@@ -166,6 +166,14 @@
           <span class="meta-item" *ngIf="!task.lastRun">
             <mat-icon>radio_button_unchecked</mat-icon>Sin ejecuciones aún
           </span>
+          <!-- Panel de error específico cuando la última ejecución falló -->
+          <div class="error-panel" *ngIf="task.lastStatus === 'error' && task.lastErrorCode">
+            <div class="error-panel__header">
+              <mat-icon>warning_amber</mat-icon>
+              <span class="error-panel__code">{{ task.lastErrorCode | lowercase | replace:'_':' ' }}</span>
+            </div>
+            <p class="error-panel__message" *ngIf="task.lastErrorMessage">{{ task.lastErrorMessage }}</p>
+          </div>
         </div>
       </mat-card-content>
 

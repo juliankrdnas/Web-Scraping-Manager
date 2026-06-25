@@ -391,7 +391,142 @@ Intentos fallidos durante el diagnóstico (documentados para referencia futura):
 
 ---
 
-## Decisiones de Diseño
+### v2.0 — Track A: Estabilización y mejoras de producción
+**Commits:** `feat: track A - error classification, graceful shutdown, CSV/JSON export, error panel UI`
+
+**Resumen:** Primera versión orientada a producción estable. Se implementaron todas las mejoras del Track A acordadas: manejo específico de errores en el motor de scraping, graceful shutdown del servidor, exportación de datos en CSV y JSON, y UI de diagnóstico de errores en las tarjetas de tarea.
+
+---
+
+#### Cambio 1 — Clasificación específica de errores en `scraperEngine.js`
+
+**Antes:** cualquier fallo devolvía `lastStatus: 'error'` sin información de la causa. Era imposible saber si el problema era el selector CSS, la red, un bloqueo, o un timeout.
+
+**Ahora:** se introdujo la clase `ScraperError` con un campo `code` que diferencia:
+
+| Código | Causa |
+|---|---|
+| `SELECTOR_NOT_FOUND` | El selector CSS no apareció en el DOM en 10 segundos — el sitio probablemente cambió su diseño |
+| `NETWORK_ERROR` | Error de red: `ERR_CONNECTION_REFUSED`, `ERR_NAME_NOT_RESOLVED`, etc. |
+| `BLOCKED` | El sitio redirigió a login, captcha o verificación — bot detectado |
+| `TIMEOUT` | La navegación tardó más de 25 segundos |
+| `UNKNOWN` | Error no clasificado |
+
+La función `classifyError(error, selector)` analiza el mensaje del error de Puppeteer y lo convierte en un `ScraperError` con el código apropiado.
+
+Se agregó también detección explícita de redirección a páginas de autenticación inspeccionando la URL final tras la navegación:
+```js
+if (finalUrl.includes('login') || finalUrl.includes('captcha') || ...) {
+  throw new ScraperError('El sitio redirigió a autenticación', 'BLOCKED');
+}
+```
+
+El retorno de `extractData` cambió de `string[]` a `{ values, errorCode, errorMessage }` para transportar el diagnóstico al servidor.
+
+**Archivos:** `scraper-backend/services/scraperEngine.js`
+
+---
+
+#### Cambio 2 — Persistencia del error en el modelo `Task`
+
+Se agregaron dos campos nuevos al schema de Mongoose:
+```js
+lastErrorCode:    { type: String, default: null }  // código del error
+lastErrorMessage: { type: String, default: null }  // mensaje legible
+```
+
+Estos campos se actualizan en cada ejecución: se limpian (`null`) en éxito y se llenan en fallo. Permiten que el frontend muestre el diagnóstico sin necesidad de consultar logs del servidor.
+
+**Archivos:** `scraper-backend/models/Task.js`
+
+---
+
+#### Cambio 3 — Graceful Shutdown en `server.js`
+
+Se agregaron manejadores para `SIGTERM` (señal que Render envía antes de cada redeploy) y `SIGINT` (Ctrl+C en desarrollo):
+
+```js
+async function shutdown(signal) {
+  // 1. Detener todos los cron jobs en memoria
+  for (const [taskId, job] of scheduledJobs) {
+    job.stop();
+  }
+  // 2. Cerrar conexión a MongoDB limpiamente
+  await mongoose.connection.close();
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+```
+
+Sin esto, al hacer redeploy en Render el proceso se terminaba abruptamente: los cron jobs en memoria quedaban en estado indeterminado y MongoDB podía registrar una desconexión abrupta.
+
+**Archivos:** `scraper-backend/server.js`
+
+---
+
+#### Cambio 4 — Endpoint de exportación de datos
+
+Se agregó la ruta `GET /api/data/:taskId/export?format=json|csv` que devuelve todos los datos de una tarea (sin paginación) en el formato solicitado con headers de descarga correctos.
+
+**JSON** incluye metadatos de la tarea y un array de registros:
+```json
+{
+  "task": { "id": "...", "name": "...", "targetUrl": "...", "cssSelector": "..." },
+  "exportedAt": "2026-06-25T...",
+  "totalRecords": 150,
+  "data": [{ "id": "...", "extractedValue": "...", "timestamp": "..." }]
+}
+```
+
+**CSV** genera un archivo con header `id,extractedValue,timestamp` y escapa comillas dobles dentro de los valores.
+
+Los valores con comillas dobles se escapan correctamente: `"` → `""` (estándar RFC 4180).
+
+**Archivos:** `scraper-backend/server.js`
+
+---
+
+#### Cambio 5 — UI de exportación en `data-viewer`
+
+Se agregaron dos botones junto al contador de registros en el selector de tarea:
+- **JSON** → llama `window.open(url, '_blank')` que dispara la descarga directamente desde el backend
+- **CSV** → mismo mecanismo
+
+La exportación usa el backend directamente (no descarga desde el frontend) para evitar cargar miles de registros en memoria del browser.
+
+**Archivos:**
+- `scraper-frontend/src/app/core/services/api.service.ts` — método `exportData(taskId, format)`
+- `scraper-frontend/src/app/features/data-viewer/data-viewer.component.html` — botones de exportación
+- `scraper-frontend/src/app/features/data-viewer/data-viewer.component.ts` — método `exportData`
+
+---
+
+#### Cambio 6 — Panel de diagnóstico de error en tarjetas de tarea
+
+Se reemplazó el tooltip (ilegible para mensajes largos) por un panel inline expandido dentro de la tarjeta cuando `lastStatus === 'error'`:
+
+```
+┌─────────────────────────────────────┐
+│ ⚠ SELECTOR NOT FOUND                │
+│ Selector no encontrado: "{data[]}   │
+│ (timeout 10s). El sitio puede haber │
+│ cambiado su diseño.                 │
+└─────────────────────────────────────┘
+```
+
+El panel tiene fondo rojo tenue (`rgba(248,113,113,0.08)`) con borde rojo suave y usa fuente monospace para el mensaje de error.
+
+Se creó el pipe `ReplacePipe` (standalone) para transformar `SELECTOR_NOT_FOUND` → `selector not found` en el template sin lógica en el componente.
+
+**Archivos:**
+- `scraper-frontend/src/app/core/pipes/replace.pipe.ts` — pipe `replace` standalone
+- `scraper-frontend/src/app/features/task-manager/task-manager.component.html` — panel `.error-panel`
+- `scraper-frontend/src/app/features/task-manager/task-manager.component.scss` — estilos del panel
+- `scraper-frontend/src/app/features/task-manager/task-manager.component.ts` — import del pipe
+- `scraper-frontend/src/app/core/services/api.service.ts` — campos `lastErrorCode` y `lastErrorMessage` en interfaz `Task`
+
+---
 
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|

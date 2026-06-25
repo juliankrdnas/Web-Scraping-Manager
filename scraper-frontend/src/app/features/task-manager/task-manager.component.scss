@@ -260,6 +260,50 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   mat-icon { font-size: 15px; width: 15px; height: 15px; }
+
+  &.error-detail {
+    color: var(--error);
+    font-size: 0.75rem;
+    mat-icon { color: var(--error); }
+  }
+}
+
+.error-panel {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: var(--radius-sm);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: var(--error);
+      flex-shrink: 0;
+    }
+  }
+
+  &__code {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--error);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  &__message {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    font-family: 'Fira Code', monospace;
+  }
 }
 
 .view-data-btn {

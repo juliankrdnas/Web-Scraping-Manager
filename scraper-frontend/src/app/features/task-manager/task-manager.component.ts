@@ -14,6 +14,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { RouterModule } from '@angular/router';
 
 import { ApiService, Task } from '../../core/services/api.service';
+import { ReplacePipe } from '../../core/pipes/replace.pipe';
 
 @Component({
   selector: 'app-task-manager',
@@ -32,6 +33,7 @@ import { ApiService, Task } from '../../core/services/api.service';
     MatProgressSpinnerModule,
     MatTooltipModule,
     MatChipsModule,
+    ReplacePipe,
   ],
   templateUrl: './task-manager.component.html',
   styleUrls: ['./task-manager.component.scss'],

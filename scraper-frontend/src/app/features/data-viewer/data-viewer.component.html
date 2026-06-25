@@ -24,13 +24,19 @@
   </mat-form-field>
 
   <div *ngIf="selectedTaskId" class="task-stats">
-    <mat-chip class="stat-chip">
-      <mat-icon>storage</mat-icon>{{ totalRecords }} registros
-    </mat-chip>
-    <button mat-stroked-button (click)="loadData()" id="btn-refresh" matTooltip="Actualizar">
-      <mat-icon>refresh</mat-icon>
-    </button>
-  </div>
+      <mat-chip class="stat-chip">
+        <mat-icon>storage</mat-icon>{{ totalRecords }} registros
+      </mat-chip>
+      <button mat-stroked-button (click)="loadData()" id="btn-refresh" matTooltip="Actualizar">
+        <mat-icon>refresh</mat-icon>
+      </button>
+      <button mat-stroked-button (click)="exportData('json')" matTooltip="Exportar JSON" id="btn-export-json">
+        <mat-icon>data_object</mat-icon> JSON
+      </button>
+      <button mat-stroked-button (click)="exportData('csv')" matTooltip="Exportar CSV" id="btn-export-csv">
+        <mat-icon>table_chart</mat-icon> CSV
+      </button>
+    </div>
 </div>
 
 <!-- ── Tabla de datos ─────────────────────────────── -->

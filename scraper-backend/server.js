@@ -187,6 +187,46 @@ app.get('/api/data/:taskId', async (req, res) => {
   }
 });
 
+// Exportar todos los datos de una tarea (CSV o JSON)
+app.get('/api/data/:taskId/export', async (req, res) => {
+  try {
+    const { format = 'json' } = req.query;
+    const task = await Task.findById(req.params.taskId);
+    if (!task) return res.status(404).json({ error: 'Tarea no encontrada.' });
+
+    const data = await ScrapedData.find({ taskId: req.params.taskId })
+      .sort({ timestamp: -1 });
+
+    const filename = `${task.name.replace(/[^a-z0-9]/gi, '_')}_export`;
+
+    if (format === 'csv') {
+      const header = 'id,extractedValue,timestamp\n';
+      const rows = data.map((d) =>
+        `"${d._id}","${d.extractedValue.replace(/"/g, '""')}","${d.timestamp.toISOString()}"`
+      ).join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+      return res.send(header + rows);
+    }
+
+    // JSON por defecto
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
+    return res.json({
+      task: { id: task._id, name: task.name, targetUrl: task.targetUrl, cssSelector: task.cssSelector },
+      exportedAt: new Date().toISOString(),
+      totalRecords: data.length,
+      data: data.map((d) => ({
+        id: d._id,
+        extractedValue: d.extractedValue,
+        timestamp: d.timestamp,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─────────────────────────────────────────────
 // Scheduler (node-cron)
 // ─────────────────────────────────────────────
@@ -197,22 +237,27 @@ const scheduledJobs = new Map(); // taskId → cron.ScheduledTask
  */
 async function runTask(task) {
   console.log(`[Cron] Ejecutando tarea: "${task.name}" (${task._id})`);
-  // Pasa el objeto task completo — el motor decide modo (API/HTML) y paginación internamente
-  const values = await extractData(task);
+
+  const { values, errorCode, errorMessage } = await extractData(task);
   const status = values.length > 0 ? 'success' : 'error';
 
-  await Task.findByIdAndUpdate(task._id, { lastRun: new Date(), lastStatus: status });
+  // Persistir resultado incluyendo código de error específico si falló
+  await Task.findByIdAndUpdate(task._id, {
+    lastRun: new Date(),
+    lastStatus: status,
+    lastErrorCode: status === 'error' ? (errorCode || 'UNKNOWN') : null,
+    lastErrorMessage: status === 'error' ? (errorMessage || null) : null,
+  });
 
   if (values.length > 0) {
-    // Guardar cada valor como un registro independiente
     const docs = values.map((v) => ({ taskId: task._id, extractedValue: v }));
     await ScrapedData.insertMany(docs);
     console.log(`[Cron] ✓ ${values.length} dato(s) guardado(s) para "${task.name}"`);
   } else {
-    console.warn(`[Cron] ✗ Sin datos para "${task.name}"`);
+    console.warn(`[Cron] ✗ Sin datos para "${task.name}" — ${errorCode}: ${errorMessage}`);
   }
 
-  return { status, values };
+  return { status, values, errorCode, errorMessage };
 }
 
 /**
@@ -256,3 +301,30 @@ async function initCronScheduler() {
 app.listen(PORT, () => {
   console.log(`[Server] Servidor corriendo en http://localhost:${PORT}`);
 });
+
+// ─────────────────────────────────────────────
+// Graceful Shutdown — SIGTERM / SIGINT
+// ─────────────────────────────────────────────
+async function shutdown(signal) {
+  console.log(`\n[Server] ${signal} recibido. Cerrando limpiamente...`);
+
+  // Detener todos los cron jobs en memoria
+  for (const [taskId, job] of scheduledJobs) {
+    job.stop();
+    console.log(`[Scheduler] Job detenido: ${taskId}`);
+  }
+  scheduledJobs.clear();
+
+  // Cerrar conexión a MongoDB
+  try {
+    await mongoose.connection.close();
+    console.log('[DB] Conexión a MongoDB cerrada.');
+  } catch (err) {
+    console.error('[DB] Error al cerrar MongoDB:', err.message);
+  }
+
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));

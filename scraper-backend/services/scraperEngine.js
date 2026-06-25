@@ -3,10 +3,21 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
 // ─────────────────────────────────────────────────────────────
+// Tipos de error específicos para diagnóstico
+// ─────────────────────────────────────────────────────────────
+
+class ScraperError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = 'ScraperError';
+    this.code = code; // 'SELECTOR_NOT_FOUND' | 'NETWORK_ERROR' | 'BLOCKED' | 'TIMEOUT' | 'UNKNOWN'
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-/** Detecta si la URL apunta a una API JSON (hostname comienza con "api.") */
 function isJsonApi(url) {
   try {
     return new URL(url).hostname.startsWith('api.');
@@ -15,10 +26,6 @@ function isJsonApi(url) {
   }
 }
 
-/**
- * Navega un objeto JSON usando notación de punto y corchetes.
- * Soporta: "title", "results.title", "results[0].title", "results[].title"
- */
 function extractByPath(obj, path) {
   const parts = path
     .replace(/\[(\d*)\]/g, '.$1')
@@ -43,9 +50,6 @@ function extractByPath(obj, path) {
   return dig(obj, parts);
 }
 
-/**
- * Simula scroll humano para forzar la carga de contenido lazy-loaded.
- */
 async function autoScroll(page) {
   await page.evaluate(async () => {
     await new Promise((resolve) => {
@@ -64,20 +68,74 @@ async function autoScroll(page) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Modo JSON API — fetch sin Puppeteer
+// Clasificación de errores de Puppeteer
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Convierte un error genérico de Puppeteer en un ScraperError con código específico.
+ * Permite diferenciar qué tipo de fallo ocurrió para logging y diagnóstico.
+ */
+function classifyError(error, selector) {
+  const msg = error.message || '';
+
+  // Timeout esperando el selector CSS
+  if (
+    msg.includes('Waiting for selector') ||
+    (msg.includes('Waiting failed') && selector && msg.includes(selector))
+  ) {
+    return new ScraperError(
+      `Selector no encontrado: "${selector}" (timeout 10s). El sitio puede haber cambiado su diseño.`,
+      'SELECTOR_NOT_FOUND'
+    );
+  }
+
+  // Timeout de navegación (goto)
+  if (msg.includes('Navigation timeout') || msg.includes('TimeoutError')) {
+    return new ScraperError(
+      `Timeout de navegación. El sitio tardó demasiado en responder.`,
+      'TIMEOUT'
+    );
+  }
+
+  // Bloqueo detectado (redirección a login/captcha)
+  if (
+    msg.includes('net::ERR_ABORTED') ||
+    msg.includes('net::ERR_CONNECTION_REFUSED') ||
+    msg.includes('ERR_NAME_NOT_RESOLVED')
+  ) {
+    return new ScraperError(
+      `Error de red: ${msg}`,
+      'NETWORK_ERROR'
+    );
+  }
+
+  // Detectar redirección a login/captcha basada en URL final
+  return new ScraperError(msg, 'UNKNOWN');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Modo JSON API
 // ─────────────────────────────────────────────────────────────
 
 async function extractFromApi(url, jsonPath) {
   console.log(`[ScraperEngine] Modo API → GET ${url}`);
 
-  const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (compatible; ScraperOrchestrator/1.0)',
-    },
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; ScraperOrchestrator/1.0)',
+      },
+    });
+  } catch (err) {
+    throw new ScraperError(`Error de red al contactar la API: ${err.message}`, 'NETWORK_ERROR');
+  }
 
-  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  if (!response.ok) {
+    const code = response.status === 403 || response.status === 401 ? 'BLOCKED' : 'NETWORK_ERROR';
+    throw new ScraperError(`HTTP ${response.status} ${response.statusText}`, code);
+  }
 
   const json = await response.json();
   const values = extractByPath(json, jsonPath);
@@ -117,7 +175,6 @@ async function extractFromHtml(task) {
 
   try {
     for (let i = 0; i < pagesToScrape; i++) {
-      // Calcular URL de la página actual reemplazando el comodín
       let currentUrl = task.targetUrl;
       if (task.isPaginated) {
         const paramValue = task.paginationStart + i * task.paginationStep;
@@ -126,20 +183,42 @@ async function extractFromHtml(task) {
 
       console.log(`[ScraperEngine] Página ${i + 1}/${pagesToScrape} → ${currentUrl}`);
 
+      // Navegación con manejo explícito de errores de red
       try {
         await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 25000 });
-      } catch {
+      } catch (navErr) {
         console.warn(`[ScraperEngine] networkidle2 falló, reintentando con domcontentloaded...`);
-        await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        try {
+          await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        } catch (navErr2) {
+          throw new ScraperError(`No se pudo navegar a ${currentUrl}: ${navErr2.message}`, 'NETWORK_ERROR');
+        }
       }
 
       const finalUrl = page.url();
       console.log(`[ScraperEngine] URL final: ${finalUrl}`);
 
-      // Scroll para forzar lazy loading
+      // Detectar redirección a login/captcha
+      if (
+        finalUrl.includes('login') ||
+        finalUrl.includes('captcha') ||
+        finalUrl.includes('account-verification') ||
+        finalUrl.includes('signin')
+      ) {
+        throw new ScraperError(
+          `El sitio redirigió a una página de autenticación: ${finalUrl}`,
+          'BLOCKED'
+        );
+      }
+
       await autoScroll(page);
 
-      await page.waitForSelector(task.cssSelector, { timeout: 10000 });
+      // waitForSelector con error específico
+      try {
+        await page.waitForSelector(task.cssSelector, { timeout: 10000 });
+      } catch (selectorErr) {
+        throw classifyError(selectorErr, task.cssSelector);
+      }
 
       const pageData = await page.evaluate((sel) => {
         return Array.from(document.querySelectorAll(sel))
@@ -156,7 +235,6 @@ async function extractFromHtml(task) {
 
       allData.push(...pageData);
 
-      // Delay aleatorio anti-ban entre páginas
       if (task.isPaginated && i < pagesToScrape - 1) {
         const delay = Math.random() * 2500 + 1500;
         console.log(`[ScraperEngine] Esperando ${Math.round(delay)}ms antes de siguiente página...`);
@@ -168,14 +246,21 @@ async function extractFromHtml(task) {
     return allData;
 
   } catch (error) {
-    console.error(`[ScraperEngine] ERROR: ${error.message}`);
+    // Re-lanzar ScraperErrors clasificados directamente
+    if (error.name === 'ScraperError') throw error;
+
+    // Clasificar errores no capturados internamente
+    const classified = classifyError(error, task.cssSelector);
+    console.error(`[ScraperEngine] ${classified.code}: ${classified.message}`);
+
     try {
       const bodyText = await page.evaluate(
         () => document.body?.innerText?.substring(0, 300) || 'sin contenido'
       );
       console.error(`[ScraperEngine] Contenido al fallar: ${bodyText}`);
     } catch (_) {}
-    return allData;
+
+    throw classified;
   } finally {
     await browser.close();
     console.log(`[ScraperEngine] Browser cerrado`);
@@ -183,23 +268,28 @@ async function extractFromHtml(task) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Punto de entrada unificado — recibe el objeto task completo
+// Punto de entrada unificado
 // ─────────────────────────────────────────────────────────────
 
 /**
- * @param {Object} task - Documento completo de MongoDB con todos sus campos.
+ * @param {Object} task - Documento completo de MongoDB.
+ * @returns {{ values: string[], errorCode: string|null, errorMessage: string|null }}
  */
 async function extractData(task) {
   try {
+    let values;
     if (isJsonApi(task.targetUrl)) {
-      return await extractFromApi(task.targetUrl, task.cssSelector);
+      values = await extractFromApi(task.targetUrl, task.cssSelector);
     } else {
-      return await extractFromHtml(task);
+      values = await extractFromHtml(task);
     }
+    return { values, errorCode: null, errorMessage: null };
   } catch (error) {
-    console.error(`[ScraperEngine] Error inesperado: ${error.message}`);
-    return [];
+    const code = error.code || 'UNKNOWN';
+    const message = error.message || 'Error desconocido';
+    console.error(`[ScraperEngine] Fallo clasificado — ${code}: ${message}`);
+    return { values: [], errorCode: code, errorMessage: message };
   }
 }
 
-module.exports = { extractData };
+module.exports = { extractData, ScraperError };
