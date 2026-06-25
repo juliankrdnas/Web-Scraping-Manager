@@ -19,15 +19,17 @@
 .header-btn { border-radius: 10px !important; gap: 6px; }
 
 /* ── Selector de tarea ── */
-.selector-card {
+.selector-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
   margin-bottom: 1.5rem;
-  mat-card-content {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    padding-top: 0.5rem !important;
-  }
+  padding: 1rem 1.5rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* Sin backdrop-filter ni transform para no romper el CDK overlay */
 }
 
 .task-select {

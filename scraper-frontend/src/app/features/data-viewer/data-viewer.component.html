@@ -9,31 +9,29 @@
 </div>
 
 <!-- ── Selector de tarea ──────────────────────────── -->
-<mat-card class="selector-card glass-card">
-  <mat-card-content>
-    <mat-form-field appearance="outline" class="task-select">
-      <mat-label>Seleccionar Tarea</mat-label>
-      <mat-icon matPrefix>task_alt</mat-icon>
-      <mat-select id="select-task" [(ngModel)]="selectedTaskId" (ngModelChange)="onTaskChange()" panelClass="task-select-panel">
-        <mat-option *ngFor="let task of tasks" [value]="task._id">
-          <span class="option-label">
-            <span class="option-dot" [class]="task.isActive ? 'dot-active' : 'dot-inactive'"></span>
-            {{ task.name }}
-          </span>
-        </mat-option>
-      </mat-select>
-    </mat-form-field>
+<div class="selector-wrapper">
+  <mat-form-field appearance="outline" class="task-select">
+    <mat-label>Seleccionar Tarea</mat-label>
+    <mat-icon matPrefix>task_alt</mat-icon>
+    <mat-select id="select-task" [(ngModel)]="selectedTaskId" (ngModelChange)="onTaskChange()" panelClass="task-select-panel" disableOptionCentering>
+      <mat-option *ngFor="let task of tasks" [value]="task._id">
+        <span class="option-label">
+          <span class="option-dot" [class]="task.isActive ? 'dot-active' : 'dot-inactive'"></span>
+          {{ task.name }}
+        </span>
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
 
-    <div *ngIf="selectedTaskId" class="task-stats">
-      <mat-chip class="stat-chip">
-        <mat-icon>storage</mat-icon>{{ totalRecords }} registros
-      </mat-chip>
-      <button mat-stroked-button (click)="loadData()" id="btn-refresh" matTooltip="Actualizar">
-        <mat-icon>refresh</mat-icon>
-      </button>
-    </div>
-  </mat-card-content>
-</mat-card>
+  <div *ngIf="selectedTaskId" class="task-stats">
+    <mat-chip class="stat-chip">
+      <mat-icon>storage</mat-icon>{{ totalRecords }} registros
+    </mat-chip>
+    <button mat-stroked-button (click)="loadData()" id="btn-refresh" matTooltip="Actualizar">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </div>
+</div>
 
 <!-- ── Tabla de datos ─────────────────────────────── -->
 <mat-card class="table-card glass-card" *ngIf="selectedTaskId">
