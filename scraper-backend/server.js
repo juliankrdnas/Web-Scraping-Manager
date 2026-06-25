@@ -235,7 +235,7 @@ function scheduleTask(task) {
 function removeScheduledTask(taskId) {
   const job = scheduledJobs.get(taskId);
   if (job) {
-    job.destroy();
+    job.stop();
     scheduledJobs.delete(taskId);
     console.log(`[Scheduler] Tarea eliminada del scheduler: ${taskId}`);
   }
