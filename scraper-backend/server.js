@@ -3,10 +3,35 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
 const cors = require('cors');
+const { execSync } = require('child_process');
 
 const Task = require('./models/Task');
 const ScrapedData = require('./models/ScrapedData');
 const { extractData } = require('./services/scraperEngine');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ─────────────────────────────────────────────
+// Asegurar que Chromium está instalado
+// ─────────────────────────────────────────────
+function ensureChromium() {
+  try {
+    const puppeteer = require('puppeteer');
+    puppeteer.executablePath(); // lanza error si no encuentra Chrome
+    console.log('[Chromium] Ejecutable encontrado.');
+  } catch {
+    console.log('[Chromium] No encontrado. Instalando...');
+    try {
+      execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+      console.log('[Chromium] Instalación completada.');
+    } catch (err) {
+      console.error('[Chromium] Error durante la instalación:', err.message);
+    }
+  }
+}
+
+ensureChromium();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
