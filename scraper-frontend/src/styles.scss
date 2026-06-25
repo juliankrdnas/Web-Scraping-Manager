@@ -139,6 +139,11 @@ html, body {
   background: rgba(99, 102, 241, 0.12) !important;
 }
 
+/* Select panel — ancla el dropdown correctamente en cualquier contexto */
+.task-select-panel {
+  margin-top: 4px !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -14,7 +14,7 @@
     <mat-form-field appearance="outline" class="task-select">
       <mat-label>Seleccionar Tarea</mat-label>
       <mat-icon matPrefix>task_alt</mat-icon>
-      <mat-select id="select-task" [(ngModel)]="selectedTaskId" (ngModelChange)="onTaskChange()">
+      <mat-select id="select-task" [(ngModel)]="selectedTaskId" (ngModelChange)="onTaskChange()" panelClass="task-select-panel">
         <mat-option *ngFor="let task of tasks" [value]="task._id">
           <span class="option-label">
             <span class="option-dot" [class]="task.isActive ? 'dot-active' : 'dot-inactive'"></span>
